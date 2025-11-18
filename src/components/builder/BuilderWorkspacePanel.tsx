@@ -2,13 +2,19 @@
 import { useState } from "react";
 
 import { BuilderActionCard } from "@/components/builder/BuilderActionCard";
+import { useTimeline } from "@/components/providers/TimelineProvider";
 import { Button } from "@/components/ui/Button";
 import {
   INTERVIEW_OPTIONS,
   MANUAL_ACTIONS,
   RECENT_CONVERSATIONS,
 } from "@/data/builder-actions";
+import type { EntryType } from "@/data/chapters";
+import type { ManualEntryDraft } from "@/data/manual-entries";
+import type { ServiceResult } from "@/lib/services/biography-data-service";
 import { cn } from "@/lib/utils";
+
+import { ManualEntryDialog } from "./dialogs/ManualEntryDialog";
 
 type BuilderWorkspacePanelProps = {
   className?: string;
@@ -95,13 +101,50 @@ function InterviewMode() {
 }
 
 function ManualMode() {
+  const { userChapters, mutating, createManualEntry } = useTimeline();
+  const [entryType, setEntryType] = useState<EntryType | null>(null);
+  const hasChapters = userChapters.length > 0;
+
+  const handleSubmit = (draft: ManualEntryDraft): Promise<ServiceResult<unknown>> =>
+    createManualEntry(draft);
+
   return (
-    <section className="space-y-6">
+    <section className="space-y-8">
       <div className="space-y-4">
+        <div>
+          <p className="text-sm font-semibold uppercase tracking-[0.3em] text-[var(--color-text-secondary)]">
+            Manual additions
+          </p>
+          <p className="text-sm text-[var(--color-text-muted)]">
+            Capture milestones, memories, or stories directly in your chapters.
+          </p>
+        </div>
         {MANUAL_ACTIONS.map((action) => (
-          <BuilderActionCard key={action.id} action={action} />
+          <BuilderActionCard
+            key={action.id}
+            action={action}
+            disabled={!hasChapters}
+            onAction={() => setEntryType(action.id as EntryType)}
+          />
         ))}
+        {!hasChapters ? (
+          <p className="text-xs text-[var(--color-text-muted)]">
+            Add a chapter before logging manual entries.
+          </p>
+        ) : null}
       </div>
+      {entryType ? (
+        <ManualEntryDialog
+          key={`create-${entryType}`}
+          open
+          mode="create"
+          entryType={entryType}
+          chapters={userChapters}
+          submitting={mutating}
+          onClose={() => setEntryType(null)}
+          onSubmit={handleSubmit}
+        />
+      ) : null}
     </section>
   );
 }

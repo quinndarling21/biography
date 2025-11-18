@@ -12,9 +12,16 @@ const accentMap: Record<BuilderAction["accent"], string> = {
 type BuilderActionCardProps = {
   action: BuilderAction;
   ctaLabel?: string;
+  disabled?: boolean;
+  onAction?: (action: BuilderAction) => void;
 };
 
-export function BuilderActionCard({ action, ctaLabel = "Start" }: BuilderActionCardProps) {
+export function BuilderActionCard({
+  action,
+  ctaLabel = "Start",
+  disabled,
+  onAction,
+}: BuilderActionCardProps) {
   const Icon = action.icon;
   return (
     <article className="flex items-center gap-4 rounded-3xl border border-[var(--color-border-subtle)] bg-white/95 p-5 shadow-sm">
@@ -38,7 +45,12 @@ export function BuilderActionCard({ action, ctaLabel = "Start" }: BuilderActionC
         type="button"
         variant="secondary"
         size="md"
-        className="ml-auto h-9 px-4 text-xs uppercase tracking-wide"
+        disabled={disabled}
+        onClick={() => onAction?.(action)}
+        className={cn(
+          "ml-auto h-9 px-4 text-xs uppercase tracking-wide",
+          disabled ? "opacity-60" : "",
+        )}
       >
         {ctaLabel}
       </Button>

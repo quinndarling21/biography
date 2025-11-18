@@ -2,9 +2,9 @@ import Link from "next/link";
 
 import { BuilderWorkspacePanel } from "@/components/builder/BuilderWorkspacePanel";
 import { TableOfContentsPanel } from "@/components/builder/TableOfContentsPanel";
+import { TimelineProvider } from "@/components/providers/TimelineProvider";
 import { BiographyDataService } from "@/lib/services/biography-data-service";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { mapTimelineToChapters } from "@/lib/timeline/transformers";
 
 export default async function Home() {
   const supabase = await createSupabaseServerClient();
@@ -22,20 +22,18 @@ export default async function Home() {
   if (error) {
     console.error("Failed to load timeline", error);
   }
-  const chapters = timeline ? mapTimelineToChapters(timeline) : [];
 
   return (
-    <div className="grid min-h-[calc(100vh-140px)] min-w-0 grid-cols-1 overflow-hidden lg:grid-cols-2">
-      <div className="flex min-h-0 flex-col">
-        <TableOfContentsPanel
-          className="flex-1 border-b border-[var(--color-border-subtle)] lg:border-b-0 lg:border-r"
-          chapters={chapters}
-        />
+    <TimelineProvider initialTimeline={timeline ?? []}>
+      <div className="grid min-h-[calc(100vh-140px)] min-w-0 grid-cols-1 overflow-hidden lg:grid-cols-2">
+        <div className="flex min-h-0 flex-col">
+          <TableOfContentsPanel className="flex-1 border-b border-[var(--color-border-subtle)] lg:border-b-0 lg:border-r" />
+        </div>
+        <div className="flex min-h-0 flex-col">
+          <BuilderWorkspacePanel className="flex-1" />
+        </div>
       </div>
-      <div className="flex min-h-0 flex-col">
-        <BuilderWorkspacePanel className="flex-1" />
-      </div>
-    </div>
+    </TimelineProvider>
   );
 }
 

@@ -4,6 +4,7 @@ import type {
   ChapterEntryDateGranularity,
   TimelineChapter,
 } from "@/lib/services/biography-data-service";
+import type { Json } from "@/lib/supabase/types";
 
 const DAY_FORMATTER = new Intl.DateTimeFormat("en-US", {
   month: "short",
@@ -32,17 +33,25 @@ export function mapTimelineToChapters(timeline: TimelineChapter[]): Chapter[] {
     title: chapter.title,
     period: formatChapterPeriod(chapter.start_date, chapter.end_date),
     summary: chapter.description ?? "",
-    entries: entries.map(mapEntryToView),
+    entries: entries
+      .filter((entry) => entry.status !== "archived")
+      .map(mapEntryToView),
   }));
 }
 
 function mapEntryToView(entry: ChapterEntry): ChapterEntryView {
+  const details = extractDetail(entry.body);
   return {
     id: entry.id,
+    chapterId: entry.chapter_id,
     title: entry.title,
     dateLabel: formatEntryDateLabel(entry.entry_date, entry.date_granularity),
     type: entry.entry_type,
     summary: entry.summary ?? "",
+    details,
+    status: entry.status,
+    entryDate: entry.entry_date,
+    dateGranularity: entry.date_granularity,
   };
 }
 
@@ -82,4 +91,12 @@ export function formatChapterPeriod(
 
 function formatRangeDate(date: string) {
   return RANGE_FORMATTER.format(new Date(date));
+}
+
+function extractDetail(body: Json | undefined): string | undefined {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return undefined;
+  }
+  const detailValue = (body as Record<string, Json | undefined>).detail;
+  return typeof detailValue === "string" ? detailValue : undefined;
 }

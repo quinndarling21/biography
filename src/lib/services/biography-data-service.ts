@@ -8,12 +8,12 @@ export type UserProfile = Tables["users"]["Row"];
 type UserProfileInsert = Tables["users"]["Insert"];
 
 export type UserChapter = Tables["user_chapters"]["Row"];
-type UserChapterInsert = Tables["user_chapters"]["Insert"];
-type UserChapterUpdate = Tables["user_chapters"]["Update"];
+export type UserChapterInsert = Tables["user_chapters"]["Insert"];
+export type UserChapterUpdate = Tables["user_chapters"]["Update"];
 
 export type ChapterEntry = Tables["chapter_entries"]["Row"];
-type ChapterEntryInsert = Tables["chapter_entries"]["Insert"];
-type ChapterEntryUpdate = Tables["chapter_entries"]["Update"];
+export type ChapterEntryInsert = Tables["chapter_entries"]["Insert"];
+export type ChapterEntryUpdate = Tables["chapter_entries"]["Update"];
 
 export type ChapterEntryType =
   Database["public"]["Enums"]["chapter_entry_type"];
@@ -128,7 +128,10 @@ export class BiographyDataService {
 
       const timeline: TimelineChapter[] = (data ?? []).map((chapterData) => {
         const { chapter_entries, ...rest } = chapterData as ChapterWithEntries;
-        const sortedEntries = [...(chapter_entries ?? [])].sort((a, b) => {
+        const filteredEntries = (chapter_entries ?? []).filter(
+          (entry) => entry.status !== "archived",
+        );
+        const sortedEntries = [...filteredEntries].sort((a, b) => {
           const dateA = a.entry_date ? Date.parse(a.entry_date) : Number.NEGATIVE_INFINITY;
           const dateB = b.entry_date ? Date.parse(b.entry_date) : Number.NEGATIVE_INFINITY;
           if (Number.isFinite(dateA) && Number.isFinite(dateB) && dateA !== dateB) {
