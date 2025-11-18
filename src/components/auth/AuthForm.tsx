@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import type { Route } from "next";
 import { Loader2, Lock, Mail, Send, Sparkles, UserPlus } from "lucide-react";
 
 import { useAuth } from "@/components/providers/AuthProvider";
@@ -77,7 +78,7 @@ export function AuthForm({
         }
 
         await refreshSession();
-        router.replace(safeRoute(nextPath));
+        router.replace(safeRoute(nextPath) as Route);
         router.refresh();
       } else {
         const { error } = await supabase.auth.signUp({

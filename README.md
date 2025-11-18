@@ -45,6 +45,79 @@ Authentication is fully wired into the UI (protected homepage, `/login`, nav ses
 - The header shows real-time session status. Signing out revokes the session and refreshes all server components.
 - Publishing to production? Ensure no view ever renders `sb_secret` keys—Supabase now blocks these in browsers and only accepts them server-side via the `apikey` header (not `Authorization`).
 
+## Supabase domain data
+
+### Schema overview
+
+The migration in `supabase/migrations/20251117191143_initial_biography_schema.sql` now models the three core layers of the builder:
+
+- `users` – keyed to `auth.users.id`, stores first/last name plus `onboarding_complete`, and controls RLS ownership for all other tables.
+- `user_chapters` – the user’s high-level eras (`start_date`, `end_date`, `title`, `description`) with automatic timestamps and owner-scoped policies.
+- `chapter_entries` – granular milestones/memories/stories linked to a chapter. Each entry tracks `entry_type`, `entry_date`, `date_granularity` (`day | month | year`), freeform `summary`, structured `body` JSON, and a lifecycle `status` (`draft | published | archived`).
+
+Every table shares the `handle_updated_at` trigger, RLS is enforced end-to-end, and indexes keep lookups on `user_id` / `chapter_id` fast even as timelines grow.
+
+### Running migrations with Supabase CLI
+
+1. Install and auth the CLI (once per machine):
+   ```bash
+   brew install supabase/tap/supabase   # or follow https://supabase.com/docs/guides/cli
+   supabase login
+   ```
+2. Link the local repo to your project (the CLI prompts for the project ref like `abcd1234`):
+   ```bash
+   supabase link --project-ref your-project-ref
+   ```
+3. Apply the checked-in migrations:
+   ```bash
+   supabase db push
+   ```
+   The CLI will run every file in `supabase/migrations` in chronological order and verify RLS/policy state. For a clean development database you can reset everything with `supabase db reset`.
+
+Commit future schema changes as new timestamped SQL files in `supabase/migrations/` to keep the project deploy-ready.
+
+### Type-safe data access layer
+
+- `src/lib/supabase/types.ts` mirrors the schema in TypeScript so `SupabaseClient<Database>` is strongly typed across the app (server + browser).
+- `src/lib/services/biography-data-service.ts` wraps the Supabase client with a single, reusable API (`listStories`, `createEntry`, `ensureProfile`, etc.). Each method returns a consistent `{ data, error }` shape and accepts structured filters (e.g., `listEntries(storyId, { sectionId, entryType })`).
+- Instantiate the service anywhere you already have a Supabase client:
+
+  ```ts
+  import { BiographyDataService } from "@/lib/services/biography-data-service";
+  import { createSupabaseServerClient } from "@/lib/supabase/server";
+
+  const supabase = await createSupabaseServerClient();
+  const dataService = new BiographyDataService(supabase);
+  const {
+    data: stories,
+    error,
+  } = await dataService.listStories(user.id);
+  ```
+
+  The shared service keeps querying logic, error handling, and table names centralized so new tables or policies only need to be encoded once.
+
+### Keeping migrations and types in sync
+
+1. **One-time setup**
+   - Install the Supabase CLI (`brew install supabase/tap/supabase`).
+   - `supabase login` to store your access token locally.
+   - `supabase link --project-ref <your-ref>` so the CLI knows which hosted project to target. (For purely local development start Docker Desktop and run `supabase start` instead, then export `SUPABASE_DB_TARGET=local` before the commands below.)
+2. **Daily workflow**
+   - Run `npm run db:sync` after editing any SQL migration. This single command:
+     1. Executes `supabase db push` against your linked (or local) project to apply migrations.
+     2. Calls `supabase gen types typescript` and rewrites `src/lib/supabase/types.ts` so the app always matches the latest schema.
+   - Need to run only one half of the workflow? Use `npm run db:push` (migrations only) or `npm run db:types` (generate types only).
+
+You can customise how the sync runs through environment variables:
+
+| Variable | Default | Purpose |
+| -------- | ------- | ------- |
+| `SUPABASE_DB_TARGET` | `linked` | Set to `local` to hit the local Docker stack (`supabase start` required) or `db-url` to point at a custom Postgres URL (requires `SUPABASE_DB_URL`). |
+| `SUPABASE_DB_SCHEMAS` | `public` | Comma-separated schemas to include when generating types. |
+| `SUPABASE_TYPES_PATH` | `src/lib/supabase/types.ts` | Destination file for the generated `Database` typings. |
+
+Because `scripts/db-sync.mjs` wraps both commands, keeping schema <-> type parity becomes part of the normal workflow rather than a manual checklist.
+
 ## Available scripts
 
 - `npm run dev` – start the local dev server (Turbopack).

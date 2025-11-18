@@ -9,7 +9,10 @@
     "lint": "eslint .",
     "lint:fix": "npm run lint -- --fix",
     "typecheck": "tsc --noEmit",
-    "check": "npm run lint && npm run typecheck"
+    "check": "npm run lint && npm run typecheck",
+    "db:sync": "node ./scripts/db-sync.mjs",
+    "db:push": "npm run db:sync -- --push-only",
+    "db:types": "npm run db:sync -- --types-only"
   },
   "dependencies": {
     "@supabase/ssr": "^0.7.0",

@@ -2,6 +2,7 @@ import Link from "next/link";
 import type {
   AnchorHTMLAttributes,
   ButtonHTMLAttributes,
+  ComponentProps,
   ReactNode,
 } from "react";
 
@@ -22,9 +23,12 @@ type ButtonAsButton = BaseProps &
     href?: undefined;
   };
 
+type NextLinkProps = ComponentProps<typeof Link>;
+
 type ButtonAsLink = BaseProps &
-  AnchorHTMLAttributes<HTMLAnchorElement> & {
-    href: string;
+  Omit<AnchorHTMLAttributes<HTMLAnchorElement>, "href" | "children"> &
+  Omit<NextLinkProps, "href" | "children" | "className"> & {
+    href: NextLinkProps["href"];
   };
 
 export type ButtonProps = ButtonAsButton | ButtonAsLink;
@@ -60,9 +64,9 @@ export function Button(props: ButtonProps) {
   );
 
   if ("href" in props && props.href) {
-    const linkProps = rest as AnchorHTMLAttributes<HTMLAnchorElement>;
+    const { href, ...linkRest } = rest as Omit<ButtonAsLink, keyof BaseProps>;
     return (
-      <Link {...linkProps} href={props.href} className={classes}>
+      <Link {...linkRest} href={href} className={classes}>
         {children}
       </Link>
     );
