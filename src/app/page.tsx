@@ -2,7 +2,9 @@ import Link from "next/link";
 
 import { BuilderWorkspacePanel } from "@/components/builder/BuilderWorkspacePanel";
 import { TableOfContentsPanel } from "@/components/builder/TableOfContentsPanel";
+import { BiographyDataService } from "@/lib/services/biography-data-service";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { mapTimelineToChapters } from "@/lib/timeline/transformers";
 
 export default async function Home() {
   const supabase = await createSupabaseServerClient();
@@ -14,10 +16,21 @@ export default async function Home() {
     return <SignedOutState />;
   }
 
+  const dataService = new BiographyDataService(supabase);
+  await dataService.ensureUserProfile(user.id);
+  const { data: timeline, error } = await dataService.getTimeline(user.id);
+  if (error) {
+    console.error("Failed to load timeline", error);
+  }
+  const chapters = timeline ? mapTimelineToChapters(timeline) : [];
+
   return (
     <div className="grid min-h-[calc(100vh-140px)] min-w-0 grid-cols-1 overflow-hidden lg:grid-cols-2">
       <div className="flex min-h-0 flex-col">
-        <TableOfContentsPanel className="flex-1 border-b border-[var(--color-border-subtle)] lg:border-b-0 lg:border-r" />
+        <TableOfContentsPanel
+          className="flex-1 border-b border-[var(--color-border-subtle)] lg:border-b-0 lg:border-r"
+          chapters={chapters}
+        />
       </div>
       <div className="flex min-h-0 flex-col">
         <BuilderWorkspacePanel className="flex-1" />

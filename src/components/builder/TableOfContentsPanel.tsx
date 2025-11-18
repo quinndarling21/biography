@@ -3,15 +3,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
 
-import { CHAPTERS_TEMP } from "@/data/chapters";
+import type { Chapter, EntryType } from "@/data/chapters";
 import { cn } from "@/lib/utils";
 
-type ChapterProps = (typeof CHAPTERS_TEMP)[number];
 type TableOfContentsPanelProps = {
   className?: string;
+  chapters: Chapter[];
 };
 
-const entryDotColors: Record<string, string> = {
+const entryDotColors: Record<EntryType, string> = {
   milestone: "bg-[var(--color-accent-primary)]",
   memory: "bg-[var(--color-text-secondary)]",
   story: "bg-[var(--color-text-strong)]",
@@ -22,18 +22,33 @@ const timelineButtonHeight = 40;
 const timelineConnectorHeight = 24;
 const timelineStep = timelineButtonHeight + timelineConnectorHeight;
 
-export function TableOfContentsPanel({ className }: TableOfContentsPanelProps) {
-  const defaultChapterId = CHAPTERS_TEMP[0]?.id;
+export function TableOfContentsPanel({ className, chapters }: TableOfContentsPanelProps) {
   const [expandedChapters, setExpandedChapters] = useState<Set<string>>(
-    () => new Set(defaultChapterId ? [defaultChapterId] : []),
+    () => new Set(chapters[0] ? [chapters[0].id] : []),
   );
   const [activeChapterId, setActiveChapterId] = useState<string | undefined>(
-    defaultChapterId,
+    () => chapters[0]?.id,
   );
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const chapterRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const timelineScrollRef = useRef<HTMLDivElement | null>(null);
   const pendingTimelineChapterRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!chapters.length) {
+      setExpandedChapters(new Set());
+      setActiveChapterId(undefined);
+      return;
+    }
+    if (activeChapterId && chapters.some((chapter) => chapter.id === activeChapterId)) {
+      return;
+    }
+    const firstId = chapters[0]?.id;
+    if (firstId) {
+      setExpandedChapters(new Set([firstId]));
+      setActiveChapterId(firstId);
+    }
+  }, [chapters, activeChapterId]);
 
   const registerChapterRef = useCallback(
     (chapterId: string) => (node: HTMLDivElement | null) => {
@@ -61,7 +76,7 @@ export function TableOfContentsPanel({ className }: TableOfContentsPanelProps) {
   ) => {
     const container = timelineScrollRef.current;
     if (!container) return;
-    const index = CHAPTERS_TEMP.findIndex((chapter) => chapter.id === chapterId);
+    const index = chapters.findIndex((chapter) => chapter.id === chapterId);
     if (index === -1) return;
     const containerHeight = container.clientHeight;
     const maxScroll = container.scrollHeight - containerHeight;
@@ -79,7 +94,6 @@ export function TableOfContentsPanel({ className }: TableOfContentsPanelProps) {
       next.add(chapterId);
       return next;
     });
-    setActiveChapterId(chapterId);
     const node = chapterRefs.current[chapterId];
     const container = scrollContainerRef.current;
     if (node && container) {
@@ -133,7 +147,7 @@ export function TableOfContentsPanel({ className }: TableOfContentsPanelProps) {
     };
     container.addEventListener("scroll", handleScroll, { passive: true });
     return () => container.removeEventListener("scroll", handleScroll);
-  }, [activeChapterId]);
+  }, [activeChapterId, chapters.length]);
 
   return (
     <section
@@ -157,16 +171,20 @@ export function TableOfContentsPanel({ className }: TableOfContentsPanelProps) {
           )}
         >
           <div className="flex-1 space-y-4">
-            {CHAPTERS_TEMP.map((chapter) => (
-              <ChapterCard
-                key={chapter.id}
-                chapter={chapter}
-                isActive={chapter.id === activeChapterId}
-                isExpanded={expandedChapters.has(chapter.id)}
-                onToggle={() => handleToggleChapter(chapter.id)}
-                innerRef={registerChapterRef(chapter.id)}
-              />
-            ))}
+            {chapters.length === 0 ? (
+              <EmptyChaptersState />
+            ) : (
+              chapters.map((chapter) => (
+                <ChapterCard
+                  key={chapter.id}
+                  chapter={chapter}
+                  isActive={chapter.id === activeChapterId}
+                  isExpanded={expandedChapters.has(chapter.id)}
+                  onToggle={() => handleToggleChapter(chapter.id)}
+                  innerRef={registerChapterRef(chapter.id)}
+                />
+              ))
+            )}
           </div>
         </div>
         <aside
@@ -180,33 +198,39 @@ export function TableOfContentsPanel({ className }: TableOfContentsPanelProps) {
             ref={timelineScrollRef}
             className="hide-scrollbar relative mx-auto flex w-full flex-col items-center overflow-y-auto py-2"
           >
-            {CHAPTERS_TEMP.map((chapter, index) => (
-              <div key={chapter.id} className="flex flex-col items-center">
-                {index !== 0 ? (
-                  <div
-                    className="w-px bg-[var(--color-border-subtle)]"
-                    style={{ height: `${timelineConnectorHeight}px` }}
-                  />
-                ) : null}
-                <button
-                  type="button"
-                  onClick={() => jumpToChapter(chapter.id)}
-                  aria-label={`Jump to chapter ${chapter.number}`}
-                  className={cn(
-                    "flex items-center justify-center rounded-full border text-xs font-semibold transition-colors",
-                    chapter.id === activeChapterId
-                      ? "border-[var(--color-text-strong)] bg-[var(--color-accent-highlight)] text-[var(--color-text-strong)]"
-                      : "border-transparent bg-white text-[var(--color-text-secondary)] hover:border-[var(--color-border-subtle)]",
-                  )}
-                  style={{
-                    width: `${timelineButtonHeight}px`,
-                    height: `${timelineButtonHeight}px`,
-                  }}
-                >
-                  {index + 1}
-                </button>
+            {chapters.length === 0 ? (
+              <div className="text-center text-xs text-[var(--color-text-muted)]">
+                --
               </div>
-            ))}
+            ) : (
+              chapters.map((chapter, index) => (
+                <div key={chapter.id} className="flex flex-col items-center">
+                  {index !== 0 ? (
+                    <div
+                      className="w-px bg-[var(--color-border-subtle)]"
+                      style={{ height: `${timelineConnectorHeight}px` }}
+                    />
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => jumpToChapter(chapter.id)}
+                    aria-label={`Jump to chapter ${chapter.number}`}
+                    className={cn(
+                      "flex items-center justify-center rounded-full border text-xs font-semibold transition-colors",
+                      chapter.id === activeChapterId
+                        ? "border-[var(--color-text-strong)] bg-[var(--color-accent-highlight)] text-[var(--color-text-strong)]"
+                        : "border-transparent bg-white text-[var(--color-text-secondary)] hover:border-[var(--color-border-subtle)]",
+                    )}
+                    style={{
+                      width: `${timelineButtonHeight}px`,
+                      height: `${timelineButtonHeight}px`,
+                    }}
+                  >
+                    {index + 1}
+                  </button>
+                </div>
+              ))
+            )}
           </div>
         </aside>
       </div>
@@ -215,7 +239,7 @@ export function TableOfContentsPanel({ className }: TableOfContentsPanelProps) {
 }
 
 type ChapterCardProps = {
-  chapter: ChapterProps;
+  chapter: Chapter;
   isActive?: boolean;
   isExpanded: boolean;
   onToggle: () => void;
@@ -296,5 +320,18 @@ function ChapterCard({
         </ul>
       ) : null}
     </article>
+  );
+}
+
+function EmptyChaptersState() {
+  return (
+    <div className="rounded-3xl border border-dashed border-[var(--color-border-subtle)] bg-white/60 p-6 text-center">
+      <p className="text-base font-semibold text-[var(--color-text-strong)]">
+        No chapters yet
+      </p>
+      <p className="mt-2 text-sm text-[var(--color-text-muted)]">
+        Start by adding a chapter from the workspace to see it appear here.
+      </p>
+    </div>
   );
 }

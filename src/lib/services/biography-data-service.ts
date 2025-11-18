@@ -21,6 +21,9 @@ export type ChapterEntryType =
 export type ChapterEntryStatus =
   Database["public"]["Enums"]["chapter_entry_status"];
 
+export type ChapterEntryDateGranularity =
+  Database["public"]["Enums"]["chapter_entry_date_granularity"];
+
 export type ChapterEntryFilter = {
   entryType?: ChapterEntryType;
   status?: ChapterEntryStatus;
@@ -37,6 +40,11 @@ export type ServiceError = {
 export type ServiceResult<T> =
   | { data: T; error: null }
   | { data: null; error: ServiceError };
+
+export type TimelineChapter = {
+  chapter: UserChapter;
+  entries: ChapterEntry[];
+};
 
 type MaybeResult<T> = PromiseLike<{
   data: T | null;
@@ -99,6 +107,62 @@ export class BiographyDataService {
           .order("created_at", { ascending: true }),
       `list chapters for ${userId}`,
     );
+  }
+
+  async getTimeline(userId: string): Promise<ServiceResult<TimelineChapter[]>> {
+    try {
+      const { data, error } = await this.client
+        .from("user_chapters")
+        .select("*, chapter_entries(*)")
+        .eq("user_id", userId)
+        .order("start_date", { ascending: true, nullsFirst: true })
+        .order("created_at", { ascending: true });
+
+      if (error) {
+        return { data: null, error: buildError(`timeline for ${userId}`, error) };
+      }
+
+      type ChapterWithEntries = UserChapter & {
+        chapter_entries?: ChapterEntry[] | null;
+      };
+
+      const timeline: TimelineChapter[] = (data ?? []).map((chapterData) => {
+        const { chapter_entries, ...rest } = chapterData as ChapterWithEntries;
+        const sortedEntries = [...(chapter_entries ?? [])].sort((a, b) => {
+          const dateA = a.entry_date ? Date.parse(a.entry_date) : Number.NEGATIVE_INFINITY;
+          const dateB = b.entry_date ? Date.parse(b.entry_date) : Number.NEGATIVE_INFINITY;
+          if (Number.isFinite(dateA) && Number.isFinite(dateB) && dateA !== dateB) {
+            return dateB - dateA;
+          }
+          if (Number.isFinite(dateA) && !Number.isFinite(dateB)) {
+            return -1;
+          }
+          if (!Number.isFinite(dateA) && Number.isFinite(dateB)) {
+            return 1;
+          }
+          const createdA = Date.parse(a.created_at);
+          const createdB = Date.parse(b.created_at);
+          return createdB - createdA;
+        });
+
+        return {
+          chapter: rest,
+          entries: sortedEntries,
+        };
+      });
+
+      return { data: timeline, error: null };
+    } catch (unknownError) {
+      return {
+        data: null,
+        error: buildError(
+          `timeline for ${userId}`,
+          unknownError instanceof Error
+            ? unknownError
+            : new Error("Unknown Supabase error"),
+        ),
+      };
+    }
   }
 
   async getChapter(chapterId: string): Promise<ServiceResult<UserChapter | null>> {
