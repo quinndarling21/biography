@@ -13,6 +13,38 @@ Install dependencies:
 npm install
 ```
 
+## Supabase authentication
+
+Authentication is fully wired into the UI (protected homepage, `/login`, nav session UI, magic links, etc.). Supabase manages sessions, refresh tokens, and row-level security (RLS) enforcement—only signed-in users can access the builder.
+
+### 1. Configure secrets
+
+1. Duplicate `.env.example` to `.env.local`.
+2. Grab your Supabase project values and update the file:
+   - `NEXT_PUBLIC_SUPABASE_URL`
+   - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (`sb_publishable_...` – replaces the legacy anon key per [Supabase discussion #29260](https://github.com/orgs/supabase/discussions/29260)). Legacy `NEXT_PUBLIC_SUPABASE_ANON_KEY` still works but is now treated as a fallback.
+   - `NEXT_PUBLIC_SITE_URL` (the exact origin you’ll serve from, e.g. `http://localhost:3000` or `https://app.example.com`)
+   - `SUPABASE_SECRET_KEY` (`sb_secret_...` – replaces `service_role`) and `SUPABASE_JWT_SECRET` stay server-only (CI, background jobs, Next.js server actions); never expose them to the browser.
+3. Restart `npm run dev` whenever env vars change.
+
+### 2. Hardening checklist (Supabase Dashboard)
+
+- **API Keys (new model)**: Each project now exposes a publishable key (`sb_publishable_...`) meant for browsers/CLIs and one or more secret keys (`sb_secret_...`) for trusted backends. Rotate/disable the legacy `anon` + `service_role` keys as soon as you complete the migration.
+- **Authentication → URL Configuration**: add `<SITE_URL>/auth/callback` to `Redirect URLs`. This route exchanges Supabase codes for sessions and redirects users (optionally preserving `?next=/path`).
+- **Authentication → Providers → Email**: keep email-enabled, require confirmations, and configure a custom email domain/Sender Name for higher deliverability.
+- **Authentication → Policies**: keep “Allow new users to sign up” enabled only if self-serve access is expected. Otherwise disable and invite users manually from the dashboard.
+- **Database → Policies (RLS)**: turn on RLS for every table you create, then add policies that scope rows to `auth.uid()`. The builder already assumes Supabase protects the backing tables.
+- **Project Settings → API**: rotate the service role key periodically and store it only in secret managers (Vercel env, Doppler, 1Password, etc.).
+- **Project Settings → Auth**: shorten refresh token lifetimes if you require faster revocation, and enable “Enforce email verification” so unverified users cannot log in.
+
+### 3. App flows
+
+- `/` (builder) now renders the interface only when a Supabase session is present; otherwise it shows a secure-landing state with CTA buttons.
+- `/login` renders a password + passwordless (magic link) form plus contextual error messaging. Pass `?mode=signup` or `?next=/desired/path` to preselect flows.
+- `/auth/callback` is the redirect target for Supabase emails and magic links. It exchanges the `code` query param for a session cookie, then redirects to `/` (or `next`).
+- The header shows real-time session status. Signing out revokes the session and refreshes all server components.
+- Publishing to production? Ensure no view ever renders `sb_secret` keys—Supabase now blocks these in browsers and only accepts them server-side via the `apikey` header (not `Authorization`).
+
 ## Available scripts
 
 - `npm run dev` – start the local dev server (Turbopack).

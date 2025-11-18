@@ -12,9 +12,9 @@ type TableOfContentsPanelProps = {
 };
 
 const entryDotColors: Record<string, string> = {
-  milestone: "bg-[color:var(--color-accent-primary)]",
-  memory: "bg-[color:var(--color-text-secondary)]",
-  story: "bg-[color:var(--color-text-strong)]",
+  milestone: "bg-[var(--color-accent-primary)]",
+  memory: "bg-[var(--color-text-secondary)]",
+  story: "bg-[var(--color-text-strong)]",
 };
 const chapterPaneHeightClass =
   "max-h-[calc(100vh-140px)] min-h-[360px]";
@@ -143,8 +143,8 @@ export function TableOfContentsPanel({ className }: TableOfContentsPanelProps) {
         className,
       )}
     >
-      <header className="border-b border-[color:var(--color-border-subtle)] p-8">
-        <p className="text-sm font-semibold uppercase tracking-[0.3em] text-[color:var(--color-text-secondary)]">
+      <header className="border-b border-[var(--color-border-subtle)] p-8">
+        <p className="text-sm font-semibold uppercase tracking-[0.3em] text-[var(--color-text-secondary)]">
           Table of Contents
         </p>
       </header>
@@ -175,7 +175,7 @@ export function TableOfContentsPanel({ className }: TableOfContentsPanelProps) {
             chapterPaneHeightClass,
           )}
         >
-          <div className="absolute inset-x-1/2 top-8 bottom-8 -translate-x-1/2 w-px bg-[color:var(--color-border-subtle)]" />
+          <div className="absolute inset-x-1/2 top-8 bottom-8 -translate-x-1/2 w-px bg-[var(--color-border-subtle)]" />
           <div
             ref={timelineScrollRef}
             className="hide-scrollbar relative mx-auto flex w-full flex-col items-center overflow-y-auto py-2"
@@ -184,7 +184,7 @@ export function TableOfContentsPanel({ className }: TableOfContentsPanelProps) {
               <div key={chapter.id} className="flex flex-col items-center">
                 {index !== 0 ? (
                   <div
-                    className="w-px bg-[color:var(--color-border-subtle)]"
+                    className="w-px bg-[var(--color-border-subtle)]"
                     style={{ height: `${timelineConnectorHeight}px` }}
                   />
                 ) : null}
@@ -195,8 +195,8 @@ export function TableOfContentsPanel({ className }: TableOfContentsPanelProps) {
                   className={cn(
                     "flex items-center justify-center rounded-full border text-xs font-semibold transition-colors",
                     chapter.id === activeChapterId
-                      ? "border-[color:var(--color-text-strong)] bg-[color:var(--color-accent-highlight)] text-[color:var(--color-text-strong)]"
-                      : "border-transparent bg-white text-[color:var(--color-text-secondary)] hover:border-[color:var(--color-border-subtle)]",
+                      ? "border-[var(--color-text-strong)] bg-[var(--color-accent-highlight)] text-[var(--color-text-strong)]"
+                      : "border-transparent bg-white text-[var(--color-text-secondary)] hover:border-[var(--color-border-subtle)]",
                   )}
                   style={{
                     width: `${timelineButtonHeight}px`,
@@ -234,8 +234,8 @@ function ChapterCard({
       className={cn(
         "rounded-3xl border px-5 py-4 shadow-sm transition-colors",
         isActive
-          ? "border-[color:var(--color-text-strong)] bg-[color:var(--color-accent-highlight)]/40"
-          : "border-[color:var(--color-border-subtle)] bg-white",
+          ? "border-[var(--color-text-strong)] bg-[var(--color-accent-highlight)]/40"
+          : "border-[var(--color-border-subtle)] bg-white",
       )}
       ref={innerRef}
     >
@@ -246,29 +246,29 @@ function ChapterCard({
         aria-expanded={isExpanded}
       >
         <div className="space-y-1">
-          <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[color:var(--color-text-secondary)]">
+          <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[var(--color-text-secondary)]">
             Chapter {chapter.number}
           </p>
-          <p className="text-lg font-semibold text-[color:var(--color-text-strong)]">
+          <p className="text-lg font-semibold text-[var(--color-text-strong)]">
             {chapter.title}
           </p>
-          <p className="text-sm text-[color:var(--color-text-muted)]">
+          <p className="text-sm text-[var(--color-text-muted)]">
             {chapter.period}
           </p>
         </div>
         <ChevronDown
           className={cn(
-            "ml-auto mt-1 h-5 w-5 text-[color:var(--color-text-secondary)] transition-transform",
+            "ml-auto mt-1 h-5 w-5 text-[var(--color-text-secondary)] transition-transform",
             isExpanded ? "rotate-0" : "-rotate-90",
           )}
           aria-hidden
         />
       </button>
-      <p className="mt-2 text-sm text-[color:var(--color-text-secondary)]/90">
+      <p className="mt-2 text-sm text-[var(--color-text-secondary)]/90">
         {chapter.summary}
       </p>
       {isExpanded ? (
-        <ul className="mt-4 space-y-3 border-l border-[color:var(--color-border-subtle)] pl-4">
+        <ul className="mt-4 space-y-3 border-l border-[var(--color-border-subtle)] pl-4">
           {chapter.entries.map((entry) => (
             <li key={entry.id}>
               <div className="flex items-start gap-3">
@@ -280,13 +280,13 @@ function ChapterCard({
                   aria-hidden
                 />
                 <div>
-                  <p className="text-sm font-medium text-[color:var(--color-text-strong)]">
+                  <p className="text-sm font-medium text-[var(--color-text-strong)]">
                     {entry.title}
                   </p>
-                  <p className="text-xs text-[color:var(--color-text-muted)]">
+                  <p className="text-xs text-[var(--color-text-muted)]">
                     {entry.dateLabel}
                   </p>
-                  <p className="text-xs text-[color:var(--color-text-secondary)]/80">
+                  <p className="text-xs text-[var(--color-text-secondary)]/80">
                     {entry.summary}
                   </p>
                 </div>

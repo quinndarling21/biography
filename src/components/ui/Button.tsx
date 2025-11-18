@@ -31,11 +31,11 @@ export type ButtonProps = ButtonAsButton | ButtonAsLink;
 
 const variantStyles: Record<Variant, string> = {
   primary:
-    "bg-[color:var(--color-text-strong)] text-white hover:bg-[color:var(--color-text-secondary)]",
+    "bg-[var(--color-text-strong)] text-on-strong hover:bg-[var(--color-text-secondary)]",
   secondary:
-    "border border-[color:var(--color-text-strong)] bg-white text-[color:var(--color-text-strong)] hover:bg-[color:var(--color-accent-highlight)]/50",
+    "border border-[var(--color-text-strong)] bg-white text-[var(--color-text-strong)] hover:bg-[var(--color-accent-highlight)]/50",
   ghost:
-    "text-[color:var(--color-text-secondary)] hover:text-[color:var(--color-text-strong)]",
+    "text-[var(--color-text-secondary)] hover:text-[var(--color-text-strong)]",
 };
 
 const sizeStyles: Record<Size, string> = {

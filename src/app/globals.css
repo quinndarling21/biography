@@ -8,6 +8,7 @@
   --color-accent-highlight: #ffc9b5;
   --color-surface-base: #f7f1eb;
   --color-border-subtle: #dbe5ea;
+  --color-text-on-strong: #ffffff;
 
   --background: var(--color-surface-base);
   --foreground: var(--color-text-strong);
@@ -34,9 +35,13 @@ body {
   text-rendering: optimizeLegibility;
 }
 
-a {
+:where(a) {
   color: inherit;
   text-decoration: none;
+}
+
+:where(.text-on-strong) {
+  color: var(--color-text-on-strong);
 }
 
 .hide-scrollbar {

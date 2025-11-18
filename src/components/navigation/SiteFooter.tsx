@@ -8,10 +8,10 @@ export function SiteFooter() {
   );
 
   return (
-    <footer className="border-t border-[color:var(--color-border-subtle)] bg-white/70">
-      <PageContainer className="flex flex-col gap-6 py-10 text-sm text-[color:var(--color-text-secondary)] md:flex-row md:items-center md:justify-between">
+    <footer className="border-t border-[var(--color-border-subtle)] bg-white/70">
+      <PageContainer className="flex flex-col gap-6 py-10 text-sm text-[var(--color-text-secondary)] md:flex-row md:items-center md:justify-between">
         <div>
-          <p className="font-semibold text-[color:var(--color-text-strong)]">
+          <p className="font-semibold text-[var(--color-text-strong)]">
             {siteConfig.name}
           </p>
           <p>{siteConfig.contact.location}</p>
@@ -26,7 +26,7 @@ export function SiteFooter() {
               href={href}
               target="_blank"
               rel="noreferrer"
-              className="transition-colors hover:text-[color:var(--color-text-strong)]"
+              className="transition-colors hover:text-[var(--color-text-strong)]"
             >
               {label}
             </a>

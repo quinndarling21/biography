@@ -20,7 +20,7 @@ export function BuilderWorkspacePanel({
   return (
     <section
       className={cn(
-        "flex h-full flex-col overflow-hidden bg-[color:var(--color-surface-base)]",
+        "flex h-full flex-col overflow-hidden bg-[var(--color-surface-base)]",
         className,
       )}
     >
@@ -37,7 +37,7 @@ function WorkspaceInner() {
   return (
     <div className="space-y-8">
       <header className="space-y-2">
-        <p className="text-sm font-semibold uppercase tracking-[0.3em] text-[color:var(--color-text-secondary)]">
+        <p className="text-sm font-semibold uppercase tracking-[0.3em] text-[var(--color-text-secondary)]">
           Build your biography
         </p>
       </header>
@@ -61,7 +61,7 @@ function ModeTabs({
   ] as const;
 
   return (
-    <div className="inline-flex rounded-full border border-[color:var(--color-border-subtle)] bg-white/70 p-1">
+    <div className="inline-flex rounded-full border border-[var(--color-border-subtle)] bg-white/70 p-1">
       {tabs.map((tab) => (
         <button
           key={tab.id}
@@ -70,8 +70,8 @@ function ModeTabs({
           className={cn(
             "rounded-full px-4 py-2 text-sm font-semibold transition-colors",
             mode === tab.id
-              ? "bg-[color:var(--color-accent-highlight)] text-[color:var(--color-text-strong)]"
-              : "text-[color:var(--color-text-secondary)] hover:bg-[color:var(--color-accent-highlight)]/30",
+              ? "bg-[var(--color-accent-highlight)] text-[var(--color-text-strong)]"
+              : "text-[var(--color-text-secondary)] hover:bg-[var(--color-accent-highlight)]/30",
           )}
         >
           {tab.label}
@@ -108,24 +108,24 @@ function ManualMode() {
 
 function RecentConversations() {
   return (
-    <article className="rounded-3xl border border-[color:var(--color-border-subtle)] bg-white/95 p-5 shadow-sm">
+    <article className="rounded-3xl border border-[var(--color-border-subtle)] bg-white/95 p-5 shadow-sm">
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <p className="text-sm font-semibold text-[color:var(--color-text-strong)]">Recent conversations</p>
-          <p className="text-xs text-[color:var(--color-text-muted)]">Pick up where you left off.</p>
+          <p className="text-sm font-semibold text-[var(--color-text-strong)]">Recent conversations</p>
+          <p className="text-xs text-[var(--color-text-muted)]">Pick up where you left off.</p>
         </div>
-        <Button variant="ghost" size="md" className="text-sm font-medium text-[color:var(--color-text-secondary)]">
+        <Button variant="ghost" size="md" className="text-sm font-medium text-[var(--color-text-secondary)]">
           View all
         </Button>
       </div>
-      <ul className="divide-y divide-[color:var(--color-border-subtle)]">
+      <ul className="divide-y divide-[var(--color-border-subtle)]">
         {RECENT_CONVERSATIONS.map((conversation) => (
           <li key={conversation.id} className="flex items-center justify-between py-3">
             <div>
-              <p className="text-sm font-semibold text-[color:var(--color-text-strong)]">{conversation.title}</p>
-              <p className="text-xs text-[color:var(--color-text-muted)]">Updated {conversation.updatedAt}</p>
+              <p className="text-sm font-semibold text-[var(--color-text-strong)]">{conversation.title}</p>
+              <p className="text-xs text-[var(--color-text-muted)]">Updated {conversation.updatedAt}</p>
             </div>
-            <span className="rounded-full border border-[color:var(--color-border-subtle)] px-3 py-1 text-xs font-semibold text-[color:var(--color-text-secondary)]">
+            <span className="rounded-full border border-[var(--color-border-subtle)] px-3 py-1 text-xs font-semibold text-[var(--color-text-secondary)]">
               {conversation.mode === "voice" ? "Voice" : "Chat"}
             </span>
           </li>
