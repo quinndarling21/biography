@@ -9,6 +9,7 @@ export type UserInterview = Tables["user_interviews"]["Row"];
 export type InterviewMessage = Tables["interview_messages"]["Row"];
 type InterviewEntryLink = Tables["interview_entries"]["Row"];
 type ChapterEntryRow = Tables["chapter_entries"]["Row"];
+type UserChapterSummary = Pick<Tables["user_chapters"]["Row"], "id" | "title">;
 
 export type InterviewEntryRecord = InterviewEntryLink & {
   chapter_entries: ChapterEntryRow | null;
@@ -59,7 +60,7 @@ export class InterviewService {
   }
 
   async createInterview(userId: string): Promise<ServiceResult<UserInterview>> {
-    const interviewResult = await this.resolveRequired(
+    const interviewResult = await this.resolveRequired<UserInterview>(
       () =>
         this.client
           .from("user_interviews")
@@ -72,15 +73,19 @@ export class InterviewService {
       "create interview",
     );
 
-    if (!interviewResult.error) {
-      await this.client.from("interview_messages").insert({
-        interview_id: interviewResult.data.id,
-        author: "chat_interviewer",
-        body: "Welcome! I’ll guide you with a few prompts to capture new memories.",
-      });
+    if (interviewResult.error) {
+      return interviewResult;
     }
 
-    return interviewResult;
+    const interview = interviewResult.data;
+
+    await this.client.from("interview_messages").insert({
+      interview_id: interview.id,
+      author: "chat_interviewer",
+      body: "Welcome! I’ll guide you with a few prompts to capture new memories.",
+    });
+
+    return { data: interview, error: null };
   }
 
   async reopenInterview(interviewId: string): Promise<ServiceResult<UserInterview>> {
@@ -129,7 +134,7 @@ export class InterviewService {
       };
     }
 
-    const userMessageResult = await this.resolveRequired(
+    const userMessageResult = await this.resolveRequired<InterviewMessage>(
       () =>
         this.client
           .from("interview_messages")
@@ -145,6 +150,7 @@ export class InterviewService {
     if (userMessageResult.error) {
       return userMessageResult;
     }
+    const userMessage = userMessageResult.data;
 
     const createdEntry = await this.maybeCreateInterviewEntry(
       userId,
@@ -155,7 +161,7 @@ export class InterviewService {
       return { data: null, error: createdEntry.error };
     }
 
-    const interviewerMessageResult = await this.resolveRequired(
+    const interviewerMessageResult = await this.resolveRequired<InterviewMessage>(
       () =>
         this.client
           .from("interview_messages")
@@ -169,13 +175,14 @@ export class InterviewService {
       "record interviewer reply",
     );
     if (interviewerMessageResult.error) {
-      return interviewerMessageResult as ServiceResult<SendMessageResult>;
+      return { data: null, error: interviewerMessageResult.error };
     }
+    const interviewerMessage = interviewerMessageResult.data;
 
     return {
       data: {
-        userMessage: userMessageResult.data,
-        interviewerMessage: interviewerMessageResult.data,
+        userMessage,
+        interviewerMessage,
         createdEntryId: createdEntry.data?.id ?? null,
       },
       error: null,
@@ -192,7 +199,7 @@ export class InterviewService {
       return { data: null, error: null };
     }
 
-    const chapterResult = await this.resolveMaybe(
+    const chapterResult = await this.resolveMaybe<UserChapterSummary>(
       () =>
         this.client
           .from("user_chapters")
@@ -207,7 +214,8 @@ export class InterviewService {
     if (chapterResult.error) {
       return { data: null, error: chapterResult.error };
     }
-    if (!chapterResult.data) {
+    const chapter = chapterResult.data;
+    if (!chapter) {
       return {
         data: null,
         error: {
@@ -223,12 +231,12 @@ export class InterviewService {
       day: "numeric",
     }).format(new Date())}.`;
 
-    const entryResult = await this.resolveRequired(
+    const entryResult = await this.resolveRequired<ChapterEntryRow>(
       () =>
         this.client
           .from("chapter_entries")
           .insert({
-            chapter_id: chapterResult.data!.id,
+            chapter_id: chapter.id,
             entry_type: "story",
             title: entryTitle,
             summary,
@@ -241,14 +249,15 @@ export class InterviewService {
     if (entryResult.error) {
       return entryResult;
     }
+    const entry = entryResult.data;
 
-    const linkResult = await this.resolveRequired(
+    const linkResult = await this.resolveRequired<InterviewEntryLink>(
       () =>
         this.client
           .from("interview_entries")
           .insert({
             interview_id: interviewId,
-            entry_id: entryResult.data.id,
+            entry_id: entry.id,
           })
           .select("*")
           .single(),
@@ -258,7 +267,7 @@ export class InterviewService {
       return { data: null, error: linkResult.error };
     }
 
-    return { data: entryResult.data, error: null };
+    return { data: entry, error: null };
   }
 
   private formatInterviewerReply(

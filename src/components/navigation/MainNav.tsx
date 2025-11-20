@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import type { Route } from "next";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { BookMarked, Loader2, LogIn, LogOut, UserRound } from "lucide-react";
@@ -114,7 +115,7 @@ function NavLink({
   label,
   currentPath,
 }: {
-  href: string;
+  href: Route;
   label: string;
   currentPath: string;
 }) {

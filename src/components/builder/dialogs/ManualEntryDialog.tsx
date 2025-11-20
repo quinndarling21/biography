@@ -320,6 +320,7 @@ export function ManualEntryDialog({
           submitting={submitting}
           initialStatus={initialStatus}
           hasChanges={hasFormChanges}
+          hasCreateInput={hasCreateInput}
           onSaveDraft={() => void handleSubmit("draft")}
           onPublish={() => void handleSubmit("published")}
           onUnpublish={() => void handleSubmit("draft")}
