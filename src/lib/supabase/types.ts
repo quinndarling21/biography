@@ -69,6 +69,74 @@ export type Database = {
           },
         ]
       }
+      interview_entries: {
+        Row: {
+          entry_id: string
+          id: string
+          interview_id: string
+        }
+        Insert: {
+          entry_id: string
+          id?: string
+          interview_id: string
+        }
+        Update: {
+          entry_id?: string
+          id?: string
+          interview_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "interview_entries_entry_id_fkey"
+            columns: ["entry_id"]
+            isOneToOne: true
+            referencedRelation: "chapter_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "interview_entries_interview_id_fkey"
+            columns: ["interview_id"]
+            isOneToOne: false
+            referencedRelation: "user_interviews"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      interview_messages: {
+        Row: {
+          author: Database["public"]["Enums"]["interview_message_author"]
+          body: string
+          id: string
+          interview_id: string
+          sequence: number
+          ts: string
+        }
+        Insert: {
+          author: Database["public"]["Enums"]["interview_message_author"]
+          body: string
+          id?: string
+          interview_id: string
+          sequence?: number
+          ts?: string
+        }
+        Update: {
+          author?: Database["public"]["Enums"]["interview_message_author"]
+          body?: string
+          id?: string
+          interview_id?: string
+          sequence?: number
+          ts?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "interview_messages_interview_id_fkey"
+            columns: ["interview_id"]
+            isOneToOne: false
+            referencedRelation: "user_interviews"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_chapters: {
         Row: {
           created_at: string
@@ -103,6 +171,38 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "user_chapters_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_interviews: {
+        Row: {
+          closed_at: string | null
+          created_at: string
+          id: string
+          status: Database["public"]["Enums"]["user_interview_status"]
+          user_id: string
+        }
+        Insert: {
+          closed_at?: string | null
+          created_at?: string
+          id?: string
+          status?: Database["public"]["Enums"]["user_interview_status"]
+          user_id: string
+        }
+        Update: {
+          closed_at?: string | null
+          created_at?: string
+          id?: string
+          status?: Database["public"]["Enums"]["user_interview_status"]
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_interviews_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "users"
@@ -148,6 +248,8 @@ export type Database = {
       chapter_entry_date_granularity: "day" | "month" | "year"
       chapter_entry_status: "draft" | "published" | "archived"
       chapter_entry_type: "milestone" | "memory" | "story"
+      interview_message_author: "user" | "chat_interviewer"
+      user_interview_status: "in_progress" | "closed"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -278,6 +380,8 @@ export const Constants = {
       chapter_entry_date_granularity: ["day", "month", "year"],
       chapter_entry_status: ["draft", "published", "archived"],
       chapter_entry_type: ["milestone", "memory", "story"],
+      interview_message_author: ["user", "chat_interviewer"],
+      user_interview_status: ["in_progress", "closed"],
     },
   },
 } as const
