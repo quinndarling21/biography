@@ -1,4 +1,4 @@
--- Seed demo timeline data for user 8ad48f52-701f-4ed0-8d48-06856dcf3bc9.
+-- Seed demo timeline data for user 69154c62-095c-458c-9971-fb4d50eb9c2a.
 -- This migration only inserts chapter/entry rows; assumes the user already exists.
 
 begin;
@@ -60,7 +60,7 @@ inserted_chapters as (
   insert into public.user_chapters (id, user_id, title, description, start_date, end_date)
   select
     gen_random_uuid(),
-    '8ad48f52-701f-4ed0-8d48-06856dcf3bc9',
+    '69154c62-095c-458c-9971-fb4d50eb9c2a',
     title,
     description,
     nullif(start_date, '')::date,

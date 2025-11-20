@@ -51,6 +51,7 @@ $$;
 create table if not exists public.user_interviews (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references public.users (id) on delete cascade,
+  name text not null default 'Chat interview',
   status public.user_interview_status not null default 'in_progress',
   created_at timestamptz not null default timezone('utc', now()),
   closed_at timestamptz,

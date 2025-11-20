@@ -58,31 +58,3 @@ export const INTERVIEW_OPTIONS: BuilderAction[] = [
     accent: "plum",
   },
 ];
-
-export type InterviewConversation = {
-  id: string;
-  title: string;
-  updatedAt: string;
-  mode: "chat" | "voice";
-};
-
-export const RECENT_CONVERSATIONS: InterviewConversation[] = [
-  {
-    id: "conv-1",
-    title: "Career pivots with Dad",
-    updatedAt: "Yesterday",
-    mode: "voice",
-  },
-  {
-    id: "conv-2",
-    title: "School days recap",
-    updatedAt: "Monday",
-    mode: "chat",
-  },
-  {
-    id: "conv-3",
-    title: "How Biography began",
-    updatedAt: "Apr 2",
-    mode: "chat",
-  },
-];

@@ -2,14 +2,16 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { BookMarked, Loader2, LogIn, LogOut, UserRound } from "lucide-react";
 
 import { useAuth } from "@/components/providers/AuthProvider";
 import { useSupabase } from "@/components/providers/SupabaseProvider";
+import { cn } from "@/lib/utils";
 
 export function MainNav() {
   const router = useRouter();
+  const pathname = usePathname() ?? "";
   const { user, loading, refreshSession } = useAuth();
   const supabase = useSupabase();
   const [isSigningOut, setSigningOut] = useState(false);
@@ -29,20 +31,26 @@ export function MainNav() {
   return (
     <header className="sticky inset-x-0 top-0 z-40 border-b border-[var(--color-border-subtle)] bg-white/80 backdrop-blur">
       <div className="flex w-full items-center justify-between gap-6 px-6 py-4 lg:px-10">
-        <Link
-          href="/"
-          className="flex items-center gap-3 text-[var(--color-text-strong)]"
-        >
-          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[var(--color-accent-highlight)]/60 text-[var(--color-text-strong)]">
-            <BookMarked className="h-5 w-5" aria-hidden />
-          </div>
-          <div>
-            <p className="text-lg font-semibold">Biography</p>
-            <p className="text-xs uppercase tracking-[0.4em] text-[var(--color-text-secondary)]">
-              Builder
-            </p>
-          </div>
-        </Link>
+        <div className="flex flex-1 items-center gap-6">
+          <Link
+            href="/"
+            className="flex items-center gap-3 text-[var(--color-text-strong)]"
+          >
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[var(--color-accent-highlight)]/60 text-[var(--color-text-strong)]">
+              <BookMarked className="h-5 w-5" aria-hidden />
+            </div>
+            <div>
+              <p className="text-lg font-semibold">Biography</p>
+              <p className="text-xs uppercase tracking-[0.4em] text-[var(--color-text-secondary)]">
+                Builder
+              </p>
+            </div>
+          </Link>
+          <nav className="hidden items-center gap-4 text-sm font-semibold text-[var(--color-text-secondary)] md:flex">
+            <NavLink href="/" label="Home" currentPath={pathname} />
+            <NavLink href="/interviewer" label="Interviewer" currentPath={pathname} />
+          </nav>
+        </div>
         <div className="flex items-center gap-4">
           {user ? (
             <div className="flex items-center gap-3 rounded-full border border-[var(--color-border-subtle)] bg-white px-3 py-2 shadow-sm">
@@ -98,6 +106,31 @@ export function MainNav() {
         </div>
       </div>
     </header>
+  );
+}
+
+function NavLink({
+  href,
+  label,
+  currentPath,
+}: {
+  href: string;
+  label: string;
+  currentPath: string;
+}) {
+  const isActive = currentPath === href;
+  return (
+    <Link
+      href={href}
+      className={cn(
+        "transition",
+        isActive
+          ? "text-[var(--color-text-strong)]"
+          : "hover:text-[var(--color-text-strong)]",
+      )}
+    >
+      {label}
+    </Link>
   );
 }
 

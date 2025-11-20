@@ -1,17 +1,22 @@
 "use client";
-import { useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import { Loader2 } from "lucide-react";
 
 import { BuilderActionCard } from "@/components/builder/BuilderActionCard";
+import { useAuth } from "@/components/providers/AuthProvider";
+import { useSupabase } from "@/components/providers/SupabaseProvider";
 import { useTimeline } from "@/components/providers/TimelineProvider";
-import { Button } from "@/components/ui/Button";
 import {
   INTERVIEW_OPTIONS,
   MANUAL_ACTIONS,
-  RECENT_CONVERSATIONS,
 } from "@/data/builder-actions";
 import type { EntryType } from "@/data/chapters";
 import type { ManualEntryDraft } from "@/data/manual-entries";
 import type { ServiceResult } from "@/lib/services/biography-data-service";
+import { formatInterviewTitle, formatUpdatedLabel } from "@/lib/interviews/utils";
+import { InterviewService } from "@/lib/services/interview-service";
 import { cn } from "@/lib/utils";
 
 import { ManualEntryDialog } from "./dialogs/ManualEntryDialog";
@@ -88,12 +93,25 @@ function ModeTabs({
 }
 
 function InterviewMode() {
+  const router = useRouter();
+
   return (
     <section className="space-y-6">
       <div className="space-y-4">
-        {INTERVIEW_OPTIONS.map((option) => (
-          <BuilderActionCard key={option.id} action={option} ctaLabel="Begin" />
-        ))}
+        {INTERVIEW_OPTIONS.map((option) => {
+          const isVoice = option.id === "voice-interview";
+          return (
+            <BuilderActionCard
+              key={option.id}
+              action={option}
+              ctaLabel={isVoice ? "Coming soon" : "Begin"}
+              disabled={isVoice}
+              onAction={
+                isVoice ? undefined : () => router.push("/interviewer")
+              }
+            />
+          );
+        })}
       </div>
       <RecentConversations />
     </section>
@@ -149,7 +167,76 @@ function ManualMode() {
   );
 }
 
+type RecentConversation = {
+  id: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 function RecentConversations() {
+  const { user } = useAuth();
+  const supabase = useSupabase();
+  const interviewService = useMemo(
+    () => new InterviewService(supabase),
+    [supabase],
+  );
+  const [loading, setLoading] = useState(false);
+  const [conversations, setConversations] = useState<RecentConversation[]>([]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const load = async () => {
+      if (!user) {
+        if (isMounted) {
+          setConversations([]);
+        }
+        return;
+      }
+      setLoading(true);
+      const { data, error } = await interviewService.listInterviews(user.id);
+      if (!isMounted) return;
+      if (error) {
+        console.error("Failed to load interviews", error);
+        setConversations([]);
+        setLoading(false);
+        return;
+      }
+      const subset = (data ?? []).slice(0, 3);
+      const enriched = await Promise.all(
+        subset.map(async (interview) => {
+          const { data: latest, error: latestError } = await supabase
+            .from("interview_messages")
+            .select("ts")
+            .eq("interview_id", interview.id)
+            .order("sequence", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (latestError) {
+            console.error(
+              `Failed to load last message timestamp for interview ${interview.id}`,
+              latestError,
+            );
+          }
+          return {
+            id: interview.id,
+            name: interview.name,
+            createdAt: interview.created_at,
+            updatedAt: latest?.ts ?? interview.closed_at ?? interview.created_at,
+          } satisfies RecentConversation;
+        }),
+      );
+      if (!isMounted) return;
+      setConversations(enriched);
+      setLoading(false);
+    };
+
+    void load();
+    return () => {
+      isMounted = false;
+    };
+  }, [interviewService, supabase, user]);
+
   return (
     <article className="rounded-3xl border border-[var(--color-border-subtle)] bg-white/95 p-5 shadow-sm">
       <div className="mb-4 flex items-center justify-between">
@@ -157,23 +244,48 @@ function RecentConversations() {
           <p className="text-sm font-semibold text-[var(--color-text-strong)]">Recent conversations</p>
           <p className="text-xs text-[var(--color-text-muted)]">Pick up where you left off.</p>
         </div>
-        <Button variant="ghost" size="md" className="text-sm font-medium text-[var(--color-text-secondary)]">
+        <Link
+          href="/interviewer"
+          className="text-sm font-medium text-[var(--color-text-secondary)]"
+        >
           View all
-        </Button>
+        </Link>
       </div>
-      <ul className="divide-y divide-[var(--color-border-subtle)]">
-        {RECENT_CONVERSATIONS.map((conversation) => (
-          <li key={conversation.id} className="flex items-center justify-between py-3">
-            <div>
-              <p className="text-sm font-semibold text-[var(--color-text-strong)]">{conversation.title}</p>
-              <p className="text-xs text-[var(--color-text-muted)]">Updated {conversation.updatedAt}</p>
-            </div>
-            <span className="rounded-full border border-[var(--color-border-subtle)] px-3 py-1 text-xs font-semibold text-[var(--color-text-secondary)]">
-              {conversation.mode === "voice" ? "Voice" : "Chat"}
-            </span>
-          </li>
-        ))}
-      </ul>
+      {loading ? (
+        <div className="flex items-center gap-2 py-4 text-sm text-[var(--color-text-muted)]">
+          <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> Loading conversations...
+        </div>
+      ) : conversations.length === 0 ? (
+        <p className="py-4 text-sm text-[var(--color-text-muted)]">
+          Start a chat-based interview to see it appear here.
+        </p>
+      ) : (
+        <ul className="divide-y divide-[var(--color-border-subtle)]">
+          {conversations.map((conversation) => (
+            <li key={conversation.id} className="py-3">
+              <Link
+                href={`/interviewer?interview=${conversation.id}`}
+                className="flex items-center justify-between"
+              >
+                <div>
+                  <p className="text-sm font-semibold text-[var(--color-text-strong)]">
+                    {formatInterviewTitle({
+                      created_at: conversation.createdAt,
+                      name: conversation.name,
+                    })}
+                  </p>
+                  <p className="text-xs text-[var(--color-text-muted)]">
+                    Updated {formatUpdatedLabel(conversation.updatedAt)}
+                  </p>
+                </div>
+                <span className="rounded-full border border-[var(--color-border-subtle)] px-3 py-1 text-xs font-semibold text-[var(--color-text-secondary)]">
+                  Chat
+                </span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
     </article>
   );
 }

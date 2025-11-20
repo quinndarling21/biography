@@ -24,7 +24,12 @@ export function BuilderActionCard({
 }: BuilderActionCardProps) {
   const Icon = action.icon;
   return (
-    <article className="flex items-center gap-4 rounded-3xl border border-[var(--color-border-subtle)] bg-white/95 p-5 shadow-sm">
+    <article
+      className={cn(
+        "flex items-center gap-4 rounded-3xl border border-[var(--color-border-subtle)] bg-white/95 p-5 shadow-sm",
+        disabled ? "opacity-60" : "",
+      )}
+    >
       <div
         className={cn(
           "flex h-12 w-12 items-center justify-center rounded-2xl text-lg",
