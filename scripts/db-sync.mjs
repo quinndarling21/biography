@@ -25,7 +25,7 @@ const typesOutputPath = resolve(
 );
 const target = (process.env.SUPABASE_DB_TARGET ?? "linked").toLowerCase();
 
-function buildTargetArgs(command) {
+function buildTargetArgs() {
   if (target === "linked") {
     return ["--linked"];
   }
@@ -67,14 +67,14 @@ if (runPush) {
   console.log(
     `→ Applying Supabase migrations (${target}) via supabase db push...`,
   );
-  runCommand(["db", "push", ...buildTargetArgs("push")]);
+  runCommand(["db", "push", ...buildTargetArgs()]);
 }
 
 if (runTypes) {
   console.log("→ Regenerating Supabase TypeScript types...");
   const schemaArgs = schemaList.flatMap((schema) => ["--schema", schema]);
   const stdout = runCommand(
-    ["gen", "types", "typescript", ...schemaArgs, ...buildTargetArgs("types")],
+    ["gen", "types", "typescript", ...schemaArgs, ...buildTargetArgs()],
     { captureStdout: true },
   );
 

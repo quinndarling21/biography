@@ -29,7 +29,6 @@ type EntryMap = Record<string, InterviewEntryRecord[]>;
 type ChapterEntry = NonNullable<InterviewEntryRecord["chapter_entries"]>;
 
 type InterviewerScreenProps = {
-  userId: string;
   initialInterviews: UserInterview[];
   initialMessages: InterviewMessage[];
   initialEntries: InterviewEntryRecord[];
@@ -38,7 +37,6 @@ type InterviewerScreenProps = {
 };
 
 export function InterviewerScreen({
-  userId,
   initialInterviews,
   initialMessages,
   initialEntries,
@@ -176,17 +174,18 @@ export function InterviewerScreen({
     if (creating) return;
     setError(null);
     setCreating(true);
-    const result = await interviewService.createInterview(userId);
+    const result = await interviewService.createInterview();
     if (result.error) {
       setError(result.error.message);
       setCreating(false);
       return;
     }
-    setInterviews((prev) => [result.data, ...prev]);
-    setActiveInterviewId(result.data.id);
-    await loadConversation(result.data.id);
+    const { interview, openingMessage } = result.data;
+    setInterviews((prev) => [interview, ...prev]);
+    setActiveInterviewId(interview.id);
+    cacheConversation(interview.id, [openingMessage]);
     setCreating(false);
-  }, [creating, interviewService, loadConversation, userId]);
+  }, [cacheConversation, creating, interviewService]);
 
   const handleSend = useCallback(async () => {
     if (!activeInterviewId || !message.trim() || sending || !canChat) {
@@ -198,7 +197,6 @@ export function InterviewerScreen({
     setError(null);
 
     const result = await interviewService.sendUserMessage({
-      userId,
       interviewId: activeInterviewId,
       body: payload,
     });
@@ -216,12 +214,15 @@ export function InterviewerScreen({
       result.data.interviewerMessage,
     ]);
 
-    if (result.data.createdEntryId) {
+    if (
+      (result.data.createdEntryIds && result.data.createdEntryIds.length > 0) ||
+      (result.data.updatedEntryIds && result.data.updatedEntryIds.length > 0)
+    ) {
       await refreshEntries(activeInterviewId);
     }
 
     setSending(false);
-  }, [activeInterviewId, cacheConversation, canChat, interviewService, messagesByInterview, refreshEntries, sending, userId, message]);
+  }, [activeInterviewId, cacheConversation, canChat, interviewService, messagesByInterview, refreshEntries, sending, message]);
 
   const handleSubmit = useCallback(
     async (event: React.FormEvent<HTMLFormElement>) => {

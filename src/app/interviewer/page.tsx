@@ -77,7 +77,6 @@ export default async function InterviewerPage({
 
   return (
     <InterviewerScreen
-      userId={user.id}
       initialInterviews={normalized}
       initialMessages={initialMessages}
       initialEntries={initialEntries}

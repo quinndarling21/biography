@@ -9,7 +9,6 @@ export type UserInterview = Tables["user_interviews"]["Row"];
 export type InterviewMessage = Tables["interview_messages"]["Row"];
 type InterviewEntryLink = Tables["interview_entries"]["Row"];
 type ChapterEntryRow = Tables["chapter_entries"]["Row"];
-type UserChapterSummary = Pick<Tables["user_chapters"]["Row"], "id" | "title">;
 
 export type InterviewEntryRecord = InterviewEntryLink & {
   chapter_entries: ChapterEntryRow | null;
@@ -18,7 +17,13 @@ export type InterviewEntryRecord = InterviewEntryLink & {
 type SendMessageResult = {
   userMessage: InterviewMessage;
   interviewerMessage: InterviewMessage;
-  createdEntryId: string | null;
+  createdEntryIds: string[];
+  updatedEntryIds: string[];
+};
+
+type CreateInterviewResult = {
+  interview: UserInterview;
+  openingMessage: InterviewMessage;
 };
 
 export class InterviewService {
@@ -59,33 +64,11 @@ export class InterviewService {
     );
   }
 
-  async createInterview(userId: string): Promise<ServiceResult<UserInterview>> {
-    const interviewResult = await this.resolveRequired<UserInterview>(
-      () =>
-        this.client
-          .from("user_interviews")
-          .insert({
-            user_id: userId,
-            name: this.generateInterviewName(),
-          })
-          .select("*")
-          .single(),
+  async createInterview(): Promise<ServiceResult<CreateInterviewResult>> {
+    return this.postJson<CreateInterviewResult>(
+      "/api/interviewer/interviews",
       "create interview",
     );
-
-    if (interviewResult.error) {
-      return interviewResult;
-    }
-
-    const interview = interviewResult.data;
-
-    await this.client.from("interview_messages").insert({
-      interview_id: interview.id,
-      author: "chat_interviewer",
-      body: "Welcome! I’ll guide you with a few prompts to capture new memories.",
-    });
-
-    return { data: interview, error: null };
   }
 
   async reopenInterview(interviewId: string): Promise<ServiceResult<UserInterview>> {
@@ -114,16 +97,11 @@ export class InterviewService {
     );
   }
 
-  async sendUserMessage({
-    userId,
-    interviewId,
-    body,
-  }: {
-    userId: string;
+  async sendUserMessage(payload: {
     interviewId: string;
     body: string;
   }): Promise<ServiceResult<SendMessageResult>> {
-    const trimmed = body.trim();
+    const trimmed = payload.body.trim();
     if (!trimmed) {
       return {
         data: null,
@@ -134,169 +112,58 @@ export class InterviewService {
       };
     }
 
-    const userMessageResult = await this.resolveRequired<InterviewMessage>(
-      () =>
-        this.client
-          .from("interview_messages")
-          .insert({
-            interview_id: interviewId,
-            author: "user",
-            body: trimmed,
-          })
-          .select("*")
-          .single(),
-      "record user interview message",
-    );
-    if (userMessageResult.error) {
-      return userMessageResult;
-    }
-    const userMessage = userMessageResult.data;
-
-    const createdEntry = await this.maybeCreateInterviewEntry(
-      userId,
-      interviewId,
-      trimmed,
-    );
-    if (createdEntry.error) {
-      return { data: null, error: createdEntry.error };
-    }
-
-    const interviewerMessageResult = await this.resolveRequired<InterviewMessage>(
-      () =>
-        this.client
-          .from("interview_messages")
-          .insert({
-            interview_id: interviewId,
-            author: "chat_interviewer",
-            body: this.formatInterviewerReply(trimmed, createdEntry.data),
-          })
-          .select("*")
-          .single(),
-      "record interviewer reply",
-    );
-    if (interviewerMessageResult.error) {
-      return { data: null, error: interviewerMessageResult.error };
-    }
-    const interviewerMessage = interviewerMessageResult.data;
-
-    return {
-      data: {
-        userMessage,
-        interviewerMessage,
-        createdEntryId: createdEntry.data?.id ?? null,
+    return this.postJson<SendMessageResult>(
+      "/api/interviewer/messages",
+      "send interview message",
+      {
+        interviewId: payload.interviewId,
+        body: trimmed,
       },
-      error: null,
-    };
-  }
-
-  private async maybeCreateInterviewEntry(
-    userId: string,
-    interviewId: string,
-    body: string,
-  ): Promise<ServiceResult<ChapterEntryRow | null>> {
-    const triggerPhrase = body.toLowerCase();
-    if (!triggerPhrase.includes("add new entry")) {
-      return { data: null, error: null };
-    }
-
-    const chapterResult = await this.resolveMaybe<UserChapterSummary>(
-      () =>
-        this.client
-          .from("user_chapters")
-          .select("id, title")
-          .eq("user_id", userId)
-          .order("position", { ascending: true })
-          .order("created_at", { ascending: true })
-          .limit(1)
-          .maybeSingle(),
-      `find first chapter for ${userId}`,
     );
-    if (chapterResult.error) {
-      return { data: null, error: chapterResult.error };
-    }
-    const chapter = chapterResult.data;
-    if (!chapter) {
+  }
+  private async postJson<T>(
+    path: string,
+    context: string,
+    body?: Record<string, unknown>,
+  ): Promise<ServiceResult<T>> {
+    try {
+      const response = await fetch(path, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+
+      const payload = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        return {
+          data: null,
+          error: {
+            context,
+            message:
+              typeof payload.error === "string"
+                ? payload.error
+                : "Request failed. Try again.",
+          },
+        };
+      }
+
+      return { data: payload as T, error: null };
+    } catch (error) {
       return {
         data: null,
         error: {
-          context: "create chat entry",
-          message: "Add a chapter before capturing entries via chat.",
+          context,
+          message:
+            error instanceof Error
+              ? error.message
+              : "Could not perform this action.",
         },
       };
     }
-
-    const entryTitle = this.buildEntryTitle();
-    const summary = `Captured in chat on ${new Intl.DateTimeFormat("en-US", {
-      month: "long",
-      day: "numeric",
-    }).format(new Date())}.`;
-
-    const entryResult = await this.resolveRequired<ChapterEntryRow>(
-      () =>
-        this.client
-          .from("chapter_entries")
-          .insert({
-            chapter_id: chapter.id,
-            entry_type: "story",
-            title: entryTitle,
-            summary,
-            status: "draft",
-          })
-          .select("*")
-          .single(),
-      "create chat entry",
-    );
-    if (entryResult.error) {
-      return entryResult;
-    }
-    const entry = entryResult.data;
-
-    const linkResult = await this.resolveRequired<InterviewEntryLink>(
-      () =>
-        this.client
-          .from("interview_entries")
-          .insert({
-            interview_id: interviewId,
-            entry_id: entry.id,
-          })
-          .select("*")
-          .single(),
-      "link chat entry",
-    );
-    if (linkResult.error) {
-      return { data: null, error: linkResult.error };
-    }
-
-    return { data: entry, error: null };
-  }
-
-  private formatInterviewerReply(
-    body: string,
-    entry: ChapterEntryRow | null,
-  ): string {
-    if (entry) {
-      return `Great reflection! I created a draft entry titled "${entry.title}." Feel free to refine it whenever you like.`;
-    }
-    if (body.toLowerCase().includes("thank")) {
-      return "Always happy to help. What else should we capture?";
-    }
-    return "Thanks for sharing. Tell me more details or type \"add new entry\" to capture something as a draft.";
-  }
-
-  private buildEntryTitle(): string {
-    const formatter = new Intl.DateTimeFormat("en-US", {
-      month: "short",
-      day: "numeric",
-    });
-    return `Chat entry - ${formatter.format(new Date())}`;
-  }
-
-  private generateInterviewName(): string {
-    const formatter = new Intl.DateTimeFormat("en-US", {
-      month: "long",
-      day: "numeric",
-    });
-    return `Chat · ${formatter.format(new Date())}`;
   }
 
   private async resolveMaybe<T>(

@@ -13,6 +13,27 @@ Install dependencies:
 npm install
 ```
 
+## Interviewer agent architecture
+
+- **Runtime**: Next.js App Router API routes (`src/app/api/interviewer/*`) orchestrate every chat turn. They run on the server so Supabase RLS continues to guard data while the LLM secret key never touches the browser. A server-side agent also means this flow deploys cleanly on Vercel’s Edge/Node runtimes without extra infrastructure.
+- **LLM stack**: LangChain’s modular packages (`@langchain/openai` + `@langchain/core`) power a lightweight agent loop. We bind OpenAI’s GPT‑4.1 Mini model (configured as `gpt-4.1-mini`) once per request, add our system prompts, and let it reason through tool calls. LangGraph remains an easy upgrade path if we ever need branching workflows or background jobs.
+- **Prompt config**: All interviewer instructions live in `src/config/prompts/interviewer-agent.ts`. This file controls the system persona, response style, max history window, opening question samples, and tool guidance so PMs can tweak tone without touching business logic.
+- **Tools**: Two LangChain structured tools encapsulate persistence:
+  1. `create_interview_entry` drafts a new `chapter_entries` record and links it through `interview_entries` when the model sees a well-formed story.
+  2. `update_interview_entry` amends an existing entry with richer summaries, emotions, or timelines as the participant shares more.
+  Both wrap Supabase queries, respect RLS, and capture metadata (location, people, emotions, takeaways) inside the entry’s JSON `body`.
+- **Data dependencies**: For every chat turn we load (a) the last 24 interview messages, (b) any entries already tied to that interview, and (c) the user’s chapters (`src/lib/interviews/context.ts`). These feed into the system prompt so the agent can reference the correct chapters/entry IDs when invoking tools.
+- **API surface**:
+  - `POST /api/interviewer/interviews` – creates a session row and seeds the first LLM prompt. Returns `{ interview, openingMessage }`.
+  - `POST /api/interviewer/messages` – records the user’s message, runs the agent loop, persists the reply, and returns `{ userMessage, interviewerMessage, createdEntryIds, updatedEntryIds }`.
+  Front-end code calls these routes via `InterviewService`, while reads (lists, transcripts, entry panels) still use the signed-in Supabase client for low latency.
+- **Environment variables**: Provide `OPENAI_API_KEY` alongside the existing Supabase secrets before running `npm run dev`. Without it the interviewer endpoints short‑circuit with a 500 so we never risk leaking prompts.
+- **Extensibility**: Because the agent, prompt config, and tools live in dedicated modules (`src/lib/interviews/*`), we can:
+  1. Swap models or providers (Anthropic, Azure, etc.) by changing the config + constructor.
+  2. Add new tools (e.g., “summarize conversation so far”, “attach media”) without rewiring the UI.
+  3. Promote the ad-hoc agent loop to LangGraph for multi-turn planning once we need background summarization or retries.
+  4. Persist alternative prompt variants by duplicating the config file and hot-swapping per user, experiment, or AB test.
+
 ## Supabase authentication
 
 Authentication is fully wired into the UI (protected homepage, `/login`, nav session UI, magic links, etc.). Supabase manages sessions, refresh tokens, and row-level security (RLS) enforcement—only signed-in users can access the builder.
