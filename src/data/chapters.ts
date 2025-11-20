@@ -22,7 +22,6 @@ export type Chapter = {
   id: string;
   number: number;
   title: string;
-  period: string;
   summary: string;
   entries: ChapterEntry[];
 };

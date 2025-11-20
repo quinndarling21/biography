@@ -43,6 +43,7 @@ type TimelineContextValue = {
     draft: ChapterDraft,
   ) => Promise<ServiceResult<UserChapter>>;
   deleteChapter: (chapterId: string) => Promise<ServiceResult<UserChapter | null>>;
+  reorderChapters: (orderedChapterIds: string[]) => Promise<ServiceResult<UserChapter[]>>;
   createManualEntry: (
     draft: ManualEntryDraft,
   ) => Promise<ServiceResult<ChapterEntry>>;
@@ -133,11 +134,21 @@ export function TimelineProvider({
       if (blocked) {
         return { data: null, error: blocked };
       }
+      const nextPosition =
+        userChapters.length === 0
+          ? 1
+          : Math.max(
+              ...userChapters.map((chapter) =>
+                typeof chapter.position === "number" ? chapter.position : 0,
+              ),
+            ) + 1;
       return runMutation(() =>
-        dataService.createChapter(chapterDraftToInsert(user!.id, draft)),
+        dataService.createChapter(
+          chapterDraftToInsert(user!.id, draft, { position: nextPosition }),
+        ),
       );
     },
-    [dataService, ensureUser, runMutation, user],
+    [dataService, ensureUser, runMutation, user, userChapters],
   );
 
   const updateChapter = useCallback(
@@ -162,6 +173,19 @@ export function TimelineProvider({
       return runMutation(() => dataService.deleteChapter(chapterId));
     },
     [dataService, ensureUser, runMutation],
+  );
+
+  const reorderChapters = useCallback(
+    async (orderedIds: string[]) => {
+      const blocked = ensureUser("reorder chapters");
+      if (blocked) {
+        return { data: null, error: blocked };
+      }
+      return runMutation(() =>
+        dataService.reorderChapters(user!.id, orderedIds),
+      );
+    },
+    [dataService, ensureUser, runMutation, user],
   );
 
   const createManualEntry = useCallback(
@@ -214,6 +238,7 @@ export function TimelineProvider({
       createChapter,
       updateChapter,
       deleteChapter,
+      reorderChapters,
       createManualEntry,
       updateManualEntry,
       archiveManualEntry,
@@ -228,6 +253,7 @@ export function TimelineProvider({
       createChapter,
       updateChapter,
       deleteChapter,
+      reorderChapters,
       createManualEntry,
       updateManualEntry,
       archiveManualEntry,

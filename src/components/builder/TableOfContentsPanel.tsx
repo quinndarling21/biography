@@ -1,7 +1,8 @@
 "use client";
 
+import type { DragEvent } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, GripVertical } from "lucide-react";
 
 import { ChapterFormDialog } from "@/components/builder/dialogs/ChapterFormDialog";
 import { ManualEntryDialog } from "@/components/builder/dialogs/ManualEntryDialog";
@@ -34,9 +35,8 @@ const timelineStep = timelineButtonHeight + timelineConnectorHeight;
 const EMPTY_CHAPTER_DRAFT: ChapterDraft = {
   title: "",
   description: "",
-  startDate: "",
-  endDate: "",
 };
+const END_DROP_ZONE_ID = "__chapter-dropzone-end__";
 
 export function TableOfContentsPanel({ className }: TableOfContentsPanelProps) {
   const {
@@ -47,11 +47,12 @@ export function TableOfContentsPanel({ className }: TableOfContentsPanelProps) {
     createChapter,
     updateChapter,
     deleteChapter,
+    reorderChapters,
     updateManualEntry,
     archiveManualEntry,
   } = useTimeline();
-  const [expandedChapters, setExpandedChapters] = useState<Set<string> | null>(
-    () => (chapters[0] ? new Set([chapters[0].id]) : null),
+  const [expandedChapters, setExpandedChapters] = useState<Set<string>>(
+    () => (chapters[0] ? new Set([chapters[0].id]) : new Set()),
   );
   const [selectedChapterId, setSelectedChapterId] = useState<string | undefined>(
     () => chapters[0]?.id,
@@ -66,8 +67,93 @@ export function TableOfContentsPanel({ className }: TableOfContentsPanelProps) {
     chapter?: UserChapter;
   } | null>(null);
   const [entryDialogId, setEntryDialogId] = useState<string | null>(null);
+  const [reorderedChapters, setReorderedChapters] = useState<Chapter[] | null>(null);
+  const [draggingChapterId, setDraggingChapterId] = useState<string | null>(null);
+  const dropHandledRef = useRef(false);
   const closeChapterDialog = () => setChapterDialog(null);
   const closeEntryDialog = () => setEntryDialogId(null);
+
+  const orderedChapters = reorderedChapters ?? chapters;
+  const canReorderChapters = orderedChapters.length > 1 && !mutating;
+
+  const handleDragStart = useCallback(
+    (chapterId: string) => {
+      if (!canReorderChapters) {
+        return;
+      }
+      dropHandledRef.current = false;
+      setDraggingChapterId(chapterId);
+      setReorderedChapters(orderedChapters.slice());
+    },
+    [canReorderChapters, orderedChapters],
+  );
+
+  const handleDragEnter = useCallback(
+    (targetId: string) => {
+      if (!draggingChapterId || !canReorderChapters) {
+        return;
+      }
+      setReorderedChapters((current) => {
+        const baseline = current ?? orderedChapters.slice();
+        const sourceIndex = baseline.findIndex((chapter) => chapter.id === draggingChapterId);
+        if (sourceIndex === -1) {
+          return baseline;
+        }
+        if (targetId === END_DROP_ZONE_ID) {
+          if (sourceIndex === baseline.length - 1) {
+            return baseline;
+          }
+          const next = [...baseline];
+          const [moved] = next.splice(sourceIndex, 1);
+          next.push(moved);
+          return next;
+        }
+        const targetIndex = baseline.findIndex((chapter) => chapter.id === targetId);
+        if (targetIndex === -1 || targetIndex === sourceIndex) {
+          return baseline;
+        }
+        const next = [...baseline];
+        const [moved] = next.splice(sourceIndex, 1);
+        const insertionIndex = next.findIndex((chapter) => chapter.id === targetId);
+        next.splice(insertionIndex, 0, moved);
+        return next;
+      });
+    },
+    [canReorderChapters, draggingChapterId, orderedChapters],
+  );
+
+  const handleDrop = useCallback(
+    async (event?: DragEvent) => {
+      event?.preventDefault();
+      event?.stopPropagation();
+      if (!draggingChapterId || !reorderedChapters) {
+        return;
+      }
+      dropHandledRef.current = true;
+      const hasChanges =
+        reorderedChapters.length !== chapters.length ||
+        reorderedChapters.some((chapter, index) => chapter.id !== chapters[index]?.id);
+      const orderedIds = reorderedChapters.map((chapter) => chapter.id);
+      setDraggingChapterId(null);
+      if (hasChanges) {
+        const result = await reorderChapters(orderedIds);
+        if (result.error) {
+          console.error("Failed to reorder chapters", result.error);
+        }
+      }
+      setReorderedChapters(null);
+    },
+    [chapters, draggingChapterId, reorderChapters, reorderedChapters],
+  );
+
+  const handleDragEndEvent = useCallback(() => {
+    if (dropHandledRef.current) {
+      dropHandledRef.current = false;
+      return;
+    }
+    setDraggingChapterId(null);
+    setReorderedChapters(null);
+  }, []);
 
   const entryMap = useMemo(() => {
     const map = new Map<string, ChapterEntry>();
@@ -95,30 +181,26 @@ export function TableOfContentsPanel({ className }: TableOfContentsPanelProps) {
     ? chapterToDraft(chapterDialog.chapter)
     : EMPTY_CHAPTER_DRAFT;
 
-  const visibleExpanded = useMemo(() => {
-    const availableIds = new Set(chapters.map((chapter) => chapter.id));
-    const base = expandedChapters ? new Set(expandedChapters) : new Set<string>();
+  const expandedChapterIds = useMemo(() => {
+    const availableIds = new Set(orderedChapters.map((chapter) => chapter.id));
     const normalized = new Set<string>();
-    base.forEach((id) => {
+    expandedChapters.forEach((id) => {
       if (availableIds.has(id)) {
         normalized.add(id);
       }
     });
-    if (!normalized.size && chapters[0]) {
-      normalized.add(chapters[0].id);
-    }
     return normalized;
-  }, [expandedChapters, chapters]);
+  }, [expandedChapters, orderedChapters]);
 
   const activeChapterId = useMemo(() => {
     if (
       selectedChapterId &&
-      chapters.some((chapter) => chapter.id === selectedChapterId)
+      orderedChapters.some((chapter) => chapter.id === selectedChapterId)
     ) {
       return selectedChapterId;
     }
-    return chapters[0]?.id;
-  }, [selectedChapterId, chapters]);
+    return undefined;
+  }, [selectedChapterId, orderedChapters]);
 
   const registerChapterRef = useCallback(
     (chapterId: string) => (node: HTMLDivElement | null) => {
@@ -139,24 +221,44 @@ export function TableOfContentsPanel({ className }: TableOfContentsPanelProps) {
     });
   };
 
-  const handleToggleChapter = (chapterId: string) => {
-    setSelectedChapterId(chapterId);
-    setExpandedChapters((prev) => {
-      const base = prev === null ? new Set(visibleExpanded) : new Set(prev);
-      if (base.has(chapterId)) {
-        base.delete(chapterId);
+  const handleToggleChapter = useCallback(
+    (chapter: Chapter) => {
+      const nextExpanded = new Set(expandedChapterIds);
+      const isClosing = nextExpanded.has(chapter.id);
+      if (isClosing) {
+        nextExpanded.delete(chapter.id);
+        setExpandedEntries((prevEntries) => {
+          if (!prevEntries.size) {
+            return prevEntries;
+          }
+          const nextEntries = new Set(prevEntries);
+          chapter.entries.forEach((entry) => nextEntries.delete(entry.id));
+          if (nextEntries.size === prevEntries.size) {
+            return prevEntries;
+          }
+          return nextEntries;
+        });
+        setSelectedChapterId((current) => {
+          if (current && current !== chapter.id && nextExpanded.has(current)) {
+            return current;
+          }
+          const fallback = nextExpanded.values().next().value as string | undefined;
+          return fallback;
+        });
       } else {
-        base.add(chapterId);
+        nextExpanded.add(chapter.id);
+        setSelectedChapterId(chapter.id);
       }
-      return base;
-    });
-  };
+      setExpandedChapters(nextExpanded);
+    },
+    [expandedChapterIds],
+  );
 
   const syncTimelineToChapter = useCallback(
     (chapterId: string, behavior: ScrollBehavior = "auto") => {
       const container = timelineScrollRef.current;
       if (!container) return;
-      const index = chapters.findIndex((chapter) => chapter.id === chapterId);
+      const index = orderedChapters.findIndex((chapter) => chapter.id === chapterId);
       if (index === -1) return;
       const containerHeight = container.clientHeight;
       const maxScroll = container.scrollHeight - containerHeight;
@@ -165,17 +267,15 @@ export function TableOfContentsPanel({ className }: TableOfContentsPanelProps) {
       const target = Math.min(Math.max(ideal, 0), maxScroll);
       container.scrollTo({ top: target, behavior });
     },
-    [chapters],
+    [orderedChapters],
   );
 
   const jumpToChapter = (chapterId: string) => {
     pendingTimelineChapterRef.current = chapterId;
     setSelectedChapterId(chapterId);
-    setExpandedChapters((prev) => {
-      const next = prev === null ? new Set(visibleExpanded) : new Set(prev);
-      next.add(chapterId);
-      return next;
-    });
+    const next = new Set(expandedChapterIds);
+    next.add(chapterId);
+    setExpandedChapters(next);
     const node = chapterRefs.current[chapterId];
     const container = scrollContainerRef.current;
     if (node && container) {
@@ -241,7 +341,7 @@ export function TableOfContentsPanel({ className }: TableOfContentsPanelProps) {
     };
     container.addEventListener("scroll", handleScroll, { passive: true });
     return () => container.removeEventListener("scroll", handleScroll);
-  }, [activeChapterId, chapters.length, syncTimelineToChapter]);
+  }, [activeChapterId, orderedChapters.length, syncTimelineToChapter]);
 
   return (
     <>
@@ -281,14 +381,24 @@ export function TableOfContentsPanel({ className }: TableOfContentsPanelProps) {
             chapterPaneHeightClass,
           )}
         >
-          <div className="flex-1 space-y-4">
-            {chapters.length === 0 ? (
+          <div
+            className="flex-1 space-y-4"
+            onDragOver={(event) => {
+              if (!draggingChapterId) return;
+              event.preventDefault();
+            }}
+            onDrop={(event) => {
+              if (!draggingChapterId) return;
+              void handleDrop(event);
+            }}
+          >
+            {orderedChapters.length === 0 ? (
               <EmptyChaptersState
                 onAddChapter={() => openChapterDialog("create")}
                 disabled={mutating}
               />
             ) : (
-              chapters.map((chapter) => {
+              orderedChapters.map((chapter, index) => {
                 const chapterRecord = userChapterMap.get(chapter.id) ?? null;
                 return (
                   <ChapterCard
@@ -296,9 +406,10 @@ export function TableOfContentsPanel({ className }: TableOfContentsPanelProps) {
                     chapter={chapter}
                     userChapter={chapterRecord}
                     isActive={chapter.id === activeChapterId}
-                    isExpanded={visibleExpanded.has(chapter.id)}
+                    isExpanded={expandedChapterIds.has(chapter.id)}
+                    displayIndex={index}
                     expandedEntries={expandedEntries}
-                    onToggle={() => handleToggleChapter(chapter.id)}
+                    onToggle={() => handleToggleChapter(chapter)}
                     onToggleEntry={toggleEntryDetails}
                     onEditEntry={setEntryDialogId}
                     onEditChapter={
@@ -307,10 +418,31 @@ export function TableOfContentsPanel({ className }: TableOfContentsPanelProps) {
                         : undefined
                     }
                     innerRef={registerChapterRef(chapter.id)}
+                    draggable={canReorderChapters}
+                    dragging={Boolean(draggingChapterId)}
+                    isDragging={draggingChapterId === chapter.id}
+                    onDragStart={() => handleDragStart(chapter.id)}
+                    onDragEnter={() => handleDragEnter(chapter.id)}
+                    onDrop={(event) => {
+                      void handleDrop(event);
+                    }}
+                    onDragEnd={handleDragEndEvent}
                   />
                 );
               })
             )}
+            {draggingChapterId ? (
+              <div
+                className="mt-2 flex h-12 items-center justify-center rounded-2xl border border-dashed border-[var(--color-border-subtle)]/80 bg-[var(--color-accent-highlight)]/20 text-xs font-medium uppercase tracking-wide text-[var(--color-text-secondary)]"
+                onDragOver={(event) => event.preventDefault()}
+                onDragEnter={() => handleDragEnter(END_DROP_ZONE_ID)}
+                onDrop={(event) => {
+                  void handleDrop(event);
+                }}
+              >
+                Drop to move to end
+              </div>
+            ) : null}
           </div>
         </div>
         <aside
@@ -324,12 +456,12 @@ export function TableOfContentsPanel({ className }: TableOfContentsPanelProps) {
             ref={timelineScrollRef}
             className="hide-scrollbar relative mx-auto flex w-full flex-col items-center overflow-y-auto py-2"
           >
-            {chapters.length === 0 ? (
+            {orderedChapters.length === 0 ? (
               <div className="text-center text-xs text-[var(--color-text-muted)]">
                 --
               </div>
             ) : (
-              chapters.map((chapter, index) => (
+              orderedChapters.map((chapter, index) => (
                 <div key={chapter.id} className="flex flex-col items-center">
                   {index !== 0 ? (
                     <div
@@ -340,7 +472,7 @@ export function TableOfContentsPanel({ className }: TableOfContentsPanelProps) {
                   <button
                     type="button"
                     onClick={() => jumpToChapter(chapter.id)}
-                    aria-label={`Jump to chapter ${chapter.number}`}
+                    aria-label={`Jump to chapter ${index + 1}`}
                     className={cn(
                       "flex items-center justify-center rounded-full border text-xs font-semibold transition-colors",
                       chapter.id === activeChapterId
@@ -403,12 +535,20 @@ type ChapterCardProps = {
   userChapter: UserChapter | null;
   isActive?: boolean;
   isExpanded: boolean;
+  displayIndex: number;
   expandedEntries: Set<string>;
   onToggle: () => void;
   onToggleEntry: (entryId: string) => void;
   onEditEntry: (entryId: string) => void;
   onEditChapter?: () => void;
   innerRef: (node: HTMLDivElement | null) => void;
+  draggable?: boolean;
+  dragging?: boolean;
+  isDragging?: boolean;
+  onDragStart?: () => void;
+  onDragEnter?: () => void;
+  onDragEnd?: () => void;
+  onDrop?: (event: DragEvent<HTMLElement>) => void;
 };
 
 function ChapterCard({
@@ -416,12 +556,20 @@ function ChapterCard({
   userChapter,
   isActive,
   isExpanded,
+  displayIndex,
   expandedEntries,
   onToggle,
   onToggleEntry,
   onEditEntry,
   onEditChapter,
   innerRef,
+  draggable,
+  dragging,
+  isDragging,
+  onDragStart,
+  onDragEnter,
+  onDragEnd,
+  onDrop,
 }: ChapterCardProps) {
   return (
     <article
@@ -430,8 +578,38 @@ function ChapterCard({
         isActive
           ? "border-[var(--color-text-strong)] bg-[var(--color-accent-highlight)]/40"
           : "border-[var(--color-border-subtle)] bg-white",
+        draggable ? "cursor-grab active:cursor-grabbing" : "",
+        isDragging ? "opacity-70" : "",
       )}
       ref={innerRef}
+      draggable={draggable}
+      onDragStart={(event) => {
+        if (!draggable) return;
+        event.stopPropagation();
+        event.dataTransfer.effectAllowed = "move";
+        onDragStart?.();
+      }}
+      onDragEnter={(event) => {
+        if (!draggable || !dragging) return;
+        event.preventDefault();
+        event.stopPropagation();
+        onDragEnter?.();
+      }}
+      onDragOver={(event) => {
+        if (!draggable || !dragging) return;
+        event.preventDefault();
+      }}
+      onDrop={(event) => {
+        if (!draggable) return;
+        event.preventDefault();
+        event.stopPropagation();
+        onDrop?.(event);
+      }}
+      onDragEnd={(event) => {
+        if (!draggable) return;
+        event.stopPropagation();
+        onDragEnd?.();
+      }}
     >
       <button
         type="button"
@@ -439,16 +617,22 @@ function ChapterCard({
         className="flex w-full items-start gap-4 text-left"
         aria-expanded={isExpanded}
       >
-        <div className="flex w-full items-start gap-4">
+        <div className="flex w-full items-start gap-3">
+          <span
+            className={cn(
+              "mt-1 hidden text-[var(--color-text-muted)] transition-opacity sm:inline-block",
+              draggable ? "opacity-100" : "opacity-0",
+            )}
+            aria-hidden
+          >
+            <GripVertical className="h-4 w-4" />
+          </span>
           <div className="space-y-1 flex-1">
             <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[var(--color-text-secondary)]">
-              Chapter {chapter.number}
+              Chapter {displayIndex + 1}
             </p>
             <p className="text-lg font-semibold text-[var(--color-text-strong)]">
               {chapter.title}
-            </p>
-            <p className="text-sm text-[var(--color-text-muted)]">
-              {chapter.period}
             </p>
           </div>
           <ChevronDown

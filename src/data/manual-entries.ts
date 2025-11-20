@@ -48,8 +48,6 @@ export type ManualEntryRecord = ManualEntryDraft & {
 export type ChapterDraft = {
   title: string;
   description?: string | null;
-  startDate?: string | null;
-  endDate?: string | null;
 };
 
 export function manualEntryDraftToInsert(
@@ -120,13 +118,13 @@ export function chapterEntryToManualRecord(
 export function chapterDraftToInsert(
   userId: string,
   draft: ChapterDraft,
+  options: { position?: number } = {},
 ): UserChapterInsert {
   return {
     user_id: userId,
     title: draft.title.trim(),
     description: nullableTrim(draft.description),
-    start_date: normalizeDate(draft.startDate),
-    end_date: normalizeDate(draft.endDate),
+    position: typeof options.position === "number" ? options.position : 0,
   };
 }
 
@@ -141,14 +139,6 @@ export function chapterDraftToUpdate(
 
   if (draft.description !== undefined) {
     payload.description = nullableTrim(draft.description);
-  }
-
-  if (draft.startDate !== undefined) {
-    payload.start_date = normalizeDate(draft.startDate);
-  }
-
-  if (draft.endDate !== undefined) {
-    payload.end_date = normalizeDate(draft.endDate);
   }
 
   return payload;
@@ -180,7 +170,5 @@ export function chapterToDraft(chapter: UserChapter): ChapterDraft {
   return {
     title: chapter.title,
     description: chapter.description,
-    startDate: chapter.start_date,
-    endDate: chapter.end_date,
   };
 }

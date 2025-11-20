@@ -52,7 +52,7 @@ Authentication is fully wired into the UI (protected homepage, `/login`, nav ses
 The migration in `supabase/migrations/20251117191143_initial_biography_schema.sql` now models the three core layers of the builder:
 
 - `users` – keyed to `auth.users.id`, stores first/last name plus `onboarding_complete`, and controls RLS ownership for all other tables.
-- `user_chapters` – the user’s high-level eras (`start_date`, `end_date`, `title`, `description`) with automatic timestamps and owner-scoped policies.
+- `user_chapters` – the user’s high-level eras (`title`, `description`, `position`) with automatic timestamps and owner-scoped policies. Dates now live exclusively on the entries themselves, while `position` controls manual ordering in the UI.
 - `chapter_entries` – granular milestones/memories/stories linked to a chapter. Each entry tracks `entry_type`, `entry_date`, `date_granularity` (`day | month | year`), freeform `summary`, structured `body` JSON, and a lifecycle `status` (`draft | published | archived`).
 
 Every table shares the `handle_updated_at` trigger, RLS is enforced end-to-end, and indexes keep lookups on `user_id` / `chapter_id` fast even as timelines grow.

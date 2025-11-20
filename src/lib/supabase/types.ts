@@ -141,9 +141,8 @@ export type Database = {
         Row: {
           created_at: string
           description: string | null
-          end_date: string | null
           id: string
-          start_date: string | null
+          position: number
           title: string
           updated_at: string
           user_id: string
@@ -151,9 +150,8 @@ export type Database = {
         Insert: {
           created_at?: string
           description?: string | null
-          end_date?: string | null
           id?: string
-          start_date?: string | null
+          position?: number
           title: string
           updated_at?: string
           user_id: string
@@ -161,9 +159,8 @@ export type Database = {
         Update: {
           created_at?: string
           description?: string | null
-          end_date?: string | null
           id?: string
-          start_date?: string | null
+          position?: number
           title?: string
           updated_at?: string
           user_id?: string
@@ -183,6 +180,7 @@ export type Database = {
           closed_at: string | null
           created_at: string
           id: string
+          name: string
           status: Database["public"]["Enums"]["user_interview_status"]
           user_id: string
         }
@@ -190,6 +188,7 @@ export type Database = {
           closed_at?: string | null
           created_at?: string
           id?: string
+          name?: string
           status?: Database["public"]["Enums"]["user_interview_status"]
           user_id: string
         }
@@ -197,6 +196,7 @@ export type Database = {
           closed_at?: string | null
           created_at?: string
           id?: string
+          name?: string
           status?: Database["public"]["Enums"]["user_interview_status"]
           user_id?: string
         }

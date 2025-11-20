@@ -103,8 +103,7 @@ create policy "Users can update their own profile"
 create table if not exists public.user_chapters (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references public.users (id) on delete cascade,
-  start_date date,
-  end_date date,
+  position integer not null default 0,
   title text not null,
   description text,
   created_at timestamptz not null default timezone('utc', now()),

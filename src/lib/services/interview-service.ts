@@ -198,7 +198,7 @@ export class InterviewService {
           .from("user_chapters")
           .select("id, title")
           .eq("user_id", userId)
-          .order("start_date", { ascending: true, nullsFirst: true })
+          .order("position", { ascending: true })
           .order("created_at", { ascending: true })
           .limit(1)
           .maybeSingle(),

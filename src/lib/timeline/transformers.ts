@@ -10,20 +10,18 @@ const DAY_FORMATTER = new Intl.DateTimeFormat("en-US", {
   month: "short",
   day: "numeric",
   year: "numeric",
+  timeZone: "UTC",
 });
 
 const MONTH_FORMATTER = new Intl.DateTimeFormat("en-US", {
   month: "short",
   year: "numeric",
+  timeZone: "UTC",
 });
 
 const YEAR_FORMATTER = new Intl.DateTimeFormat("en-US", {
   year: "numeric",
-});
-
-const RANGE_FORMATTER = new Intl.DateTimeFormat("en-US", {
-  month: "short",
-  year: "numeric",
+  timeZone: "UTC",
 });
 
 export function mapTimelineToChapters(timeline: TimelineChapter[]): Chapter[] {
@@ -31,7 +29,6 @@ export function mapTimelineToChapters(timeline: TimelineChapter[]): Chapter[] {
     id: chapter.id,
     number: index + 1,
     title: chapter.title,
-    period: formatChapterPeriod(chapter.start_date, chapter.end_date),
     summary: chapter.description ?? "",
     entries: entries
       .filter((entry) => entry.status !== "archived")
@@ -73,24 +70,6 @@ export function formatEntryDateLabel(
     default:
       return DAY_FORMATTER.format(value);
   }
-}
-
-export function formatChapterPeriod(
-  startDate: string | null,
-  endDate: string | null,
-): string {
-  if (!startDate && !endDate) {
-    return "Timeline coming soon";
-  }
-  if (startDate && endDate) {
-    return `${formatRangeDate(startDate)} – ${formatRangeDate(endDate)}`;
-  }
-  const singleDate = startDate ?? endDate;
-  return singleDate ? formatRangeDate(singleDate) : "Timeline coming soon";
-}
-
-function formatRangeDate(date: string) {
-  return RANGE_FORMATTER.format(new Date(date));
 }
 
 function extractDetail(body: Json | undefined): string | undefined {

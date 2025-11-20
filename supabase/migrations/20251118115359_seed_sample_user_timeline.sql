@@ -1,4 +1,4 @@
--- Seed demo timeline data for user 69154c62-095c-458c-9971-fb4d50eb9c2a.
+-- Seed demo timeline data for user d59b3467-0345-4459-99c7-6ae6d2871f41.
 -- This migration only inserts chapter/entry rows; assumes the user already exists.
 
 begin;
@@ -9,8 +9,7 @@ with chapter_payloads as (
       (
         'Origins',
         'Family rituals, early curiosities, and the first sparks.',
-        '1990-01-01',
-        '1995-12-31',
+        1,
         '[
           {
             "entry_type": "milestone",
@@ -33,8 +32,7 @@ with chapter_payloads as (
       (
         'School Days',
         'Learning to translate ideas into experiments and clubs.',
-        '1996-01-01',
-        '2004-12-31',
+        2,
         '[
           {
             "entry_type": "milestone",
@@ -54,17 +52,16 @@ with chapter_payloads as (
           }
         ]'::jsonb
       )
-  ) as payload(title, description, start_date, end_date, entries)
+  ) as payload(title, description, position, entries)
 ),
 inserted_chapters as (
-  insert into public.user_chapters (id, user_id, title, description, start_date, end_date)
+  insert into public.user_chapters (id, user_id, title, description, position)
   select
     gen_random_uuid(),
-    '69154c62-095c-458c-9971-fb4d50eb9c2a',
+    'd59b3467-0345-4459-99c7-6ae6d2871f41',
     title,
     description,
-    nullif(start_date, '')::date,
-    nullif(end_date, '')::date
+    position
   from chapter_payloads
   returning id, title
 )

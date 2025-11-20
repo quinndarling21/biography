@@ -20,8 +20,6 @@ type ChapterFormDialogProps = {
 type ChapterFormState = {
   title: string;
   description: string;
-  startDate: string;
-  endDate: string;
 };
 
 export function ChapterFormDialog({
@@ -48,8 +46,6 @@ export function ChapterFormDialog({
     const result = await onSubmit({
       title: form.title,
       description: form.description || null,
-      startDate: form.startDate || null,
-      endDate: form.endDate || null,
     });
     if (result.error) {
       setError(result.error.message);
@@ -64,8 +60,8 @@ export function ChapterFormDialog({
       title={mode === "edit" ? "Update chapter" : "Create chapter"}
       description={
         mode === "edit"
-          ? "Adjust the dates, title, or description for this era."
-          : "Define a timeframe and summary for your next chapter."
+          ? "Adjust the title or description for this era."
+          : "Give your next chapter a title and summary."
       }
       onClose={onClose}
     >
@@ -92,30 +88,6 @@ export function ChapterFormDialog({
             }
           />
         </label>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <label className="block text-sm font-medium text-[var(--color-text-secondary)]">
-            Start date
-            <input
-              type="date"
-              className="mt-1 w-full rounded-2xl border border-[var(--color-border-subtle)] bg-white px-3 py-2 text-sm"
-              value={form.startDate}
-              onChange={(event) =>
-                setForm((prev) => ({ ...prev, startDate: event.target.value }))
-              }
-            />
-          </label>
-          <label className="block text-sm font-medium text-[var(--color-text-secondary)]">
-            End date
-            <input
-              type="date"
-              className="mt-1 w-full rounded-2xl border border-[var(--color-border-subtle)] bg-white px-3 py-2 text-sm"
-              value={form.endDate}
-              onChange={(event) =>
-                setForm((prev) => ({ ...prev, endDate: event.target.value }))
-              }
-            />
-          </label>
-        </div>
         {error ? <p className="text-sm text-red-600">{error}</p> : null}
         <div className="flex flex-wrap items-center justify-between gap-3">
           {mode === "edit" && onDelete ? (
@@ -161,7 +133,5 @@ function buildChapterFormState(draft: ChapterDraft): ChapterFormState {
   return {
     title: draft.title,
     description: draft.description ?? "",
-    startDate: draft.startDate ?? "",
-    endDate: draft.endDate ?? "",
   };
 }

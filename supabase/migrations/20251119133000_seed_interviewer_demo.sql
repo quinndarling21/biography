@@ -5,8 +5,8 @@ begin;
 with first_chapter as (
   select id
   from public.user_chapters
-  where user_id = '69154c62-095c-458c-9971-fb4d50eb9c2a'
-  order by start_date nulls first, created_at asc
+  where user_id = 'd59b3467-0345-4459-99c7-6ae6d2871f41'
+  order by position asc, created_at asc
   limit 1
 ),
 insert_interviews as (
@@ -14,7 +14,7 @@ insert_interviews as (
   values
     (
       '35ce5b01-4545-456c-b3d7-26f5bf0c1e01',
-      '69154c62-095c-458c-9971-fb4d50eb9c2a',
+      'd59b3467-0345-4459-99c7-6ae6d2871f41',
       'Career pivots with Dad',
       'in_progress',
       '2025-05-15T14:00:00Z',
@@ -22,7 +22,7 @@ insert_interviews as (
     ),
     (
       '35ce5b01-4545-456c-b3d7-26f5bf0c1e02',
-      '69154c62-095c-458c-9971-fb4d50eb9c2a',
+      'd59b3467-0345-4459-99c7-6ae6d2871f41',
       'School days recap',
       'closed',
       '2025-05-10T18:00:00Z',

@@ -103,7 +103,7 @@ export class BiographyDataService {
           .from("user_chapters")
           .select("*")
           .eq("user_id", userId)
-          .order("start_date", { ascending: true, nullsFirst: true })
+          .order("position", { ascending: true })
           .order("created_at", { ascending: true }),
       `list chapters for ${userId}`,
     );
@@ -115,7 +115,7 @@ export class BiographyDataService {
         .from("user_chapters")
         .select("*, chapter_entries(*)")
         .eq("user_id", userId)
-        .order("start_date", { ascending: true, nullsFirst: true })
+        .order("position", { ascending: true })
         .order("created_at", { ascending: true });
 
       if (error) {
@@ -132,10 +132,10 @@ export class BiographyDataService {
           (entry) => entry.status !== "archived",
         );
         const sortedEntries = [...filteredEntries].sort((a, b) => {
-          const dateA = a.entry_date ? Date.parse(a.entry_date) : Number.NEGATIVE_INFINITY;
-          const dateB = b.entry_date ? Date.parse(b.entry_date) : Number.NEGATIVE_INFINITY;
+          const dateA = a.entry_date ? Date.parse(a.entry_date) : Number.POSITIVE_INFINITY;
+          const dateB = b.entry_date ? Date.parse(b.entry_date) : Number.POSITIVE_INFINITY;
           if (Number.isFinite(dateA) && Number.isFinite(dateB) && dateA !== dateB) {
-            return dateB - dateA;
+            return dateA - dateB;
           }
           if (Number.isFinite(dateA) && !Number.isFinite(dateB)) {
             return -1;
@@ -145,7 +145,7 @@ export class BiographyDataService {
           }
           const createdA = Date.parse(a.created_at);
           const createdB = Date.parse(b.created_at);
-          return createdB - createdA;
+          return createdA - createdB;
         });
 
         return {
@@ -221,6 +221,44 @@ export class BiographyDataService {
     );
   }
 
+  async reorderChapters(
+    userId: string,
+    orderedIds: string[],
+  ): Promise<ServiceResult<UserChapter[]>> {
+    if (!orderedIds.length) {
+      return { data: [], error: null };
+    }
+    try {
+      const responses = await Promise.all(
+        orderedIds.map((chapterId, index) =>
+          this.client
+            .from("user_chapters")
+            .update({ position: index + 1 })
+            .eq("id", chapterId)
+            .eq("user_id", userId)
+            .select("*")
+            .single(),
+        ),
+      );
+      const failed = responses.find((response) => response.error);
+      if (failed?.error) {
+        return { data: null, error: buildError("reorder chapters", failed.error) };
+      }
+      const updated: UserChapter[] = responses
+        .map((response) => response.data)
+        .filter((chapter): chapter is UserChapter => Boolean(chapter));
+      return { data: updated, error: null };
+    } catch (unknownError) {
+      return {
+        data: null,
+        error: buildError(
+          "reorder chapters",
+          unknownError instanceof Error ? unknownError : new Error("Unknown Supabase error"),
+        ),
+      };
+    }
+  }
+
   // Entries ------------------------------------------------------------------
 
   async listChapterEntries(
@@ -233,8 +271,8 @@ export class BiographyDataService {
           .from("chapter_entries")
           .select("*")
           .eq("chapter_id", chapterId)
-          .order("entry_date", { ascending: false, nullsFirst: true })
-          .order("created_at", { ascending: false });
+          .order("entry_date", { ascending: true, nullsFirst: false })
+          .order("created_at", { ascending: true });
 
         if (filter.entryType) {
           query = query.eq("entry_type", filter.entryType);

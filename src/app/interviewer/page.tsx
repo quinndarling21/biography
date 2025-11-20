@@ -9,15 +9,13 @@ import type {
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type { UserChapter } from "@/lib/services/biography-data-service";
 
-type InterviewerPageProps = {
-  searchParams?: {
-    interview?: string;
-  };
-};
 
 export default async function InterviewerPage({
   searchParams,
-}: InterviewerPageProps) {
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const resolvedSearchParams = await searchParams;
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
@@ -38,7 +36,7 @@ export default async function InterviewerPage({
   }
 
   const normalized: UserInterview[] = interviews ?? [];
-  const requestedInterviewId = searchParams?.interview;
+  const requestedInterviewId = resolvedSearchParams?.interview as string | undefined;
   const requestedInterview = normalized.find(
     (interview) => interview.id === requestedInterviewId,
   );
@@ -52,7 +50,7 @@ export default async function InterviewerPage({
     .from("user_chapters")
     .select("*")
     .eq("user_id", user.id)
-    .order("start_date", { ascending: true, nullsFirst: true })
+    .order("position", { ascending: true })
     .order("created_at", { ascending: true });
 
   if (chaptersError) {
