@@ -6,6 +6,10 @@ import type { Database, Json } from "@/lib/supabase/types";
 import type { InterviewEntryRecord } from "@/lib/services/interview-service";
 import type { InterviewChapterSummary } from "@/lib/interviews/context";
 import type { InterviewEntryMetadata } from "@/config/prompts/interviewer-agent";
+import type {
+  ChapterEntryDateGranularity,
+  ChapterEntryType,
+} from "@/lib/services/biography-data-service";
 
 type ToolTracker = {
   createdEntries: string[];
@@ -20,7 +24,7 @@ type InterviewToolContext = {
   entries: InterviewEntryRecord[];
 };
 
-const baseEntrySchema = {
+const entryFieldsSchema = {
   title: z
     .string()
     .min(6, "Use a descriptive title the user will recognize.")
@@ -33,30 +37,27 @@ const baseEntrySchema = {
     .string()
     .nullish()
     .describe("Long-form detail or excerpt captured from the conversation."),
-  entryDate: z
-    .string()
+  entryYear: z
+    .coerce.number()
+    .int()
+    .min(1800)
+    .max(2100)
     .nullish()
-    .describe("ISO date (YYYY-MM-DD) or descriptive year/month if exact date unknown."),
-  timeline: z
-    .string()
+    .describe("4 digit year like 1996 or 2010."),
+  entryMonth: z
+    .coerce.number()
+    .int()
+    .min(1)
+    .max(12)
     .nullish()
-    .describe("Context about when this memory occurred (season, age, etc.)."),
-  location: z
-    .string()
+    .describe("Month number (1-12). Provide only when the year is known."),
+  entryDay: z
+    .coerce.number()
+    .int()
+    .min(1)
+    .max(31)
     .nullish()
-    .describe("Location of the memory."),
-  participants: z
-    .array(z.string())
-    .nullish()
-    .describe("Key people involved in the memory."),
-  emotions: z
-    .array(z.string())
-    .nullish()
-    .describe("Emotions expressed by the user."),
-  takeaways: z
-    .array(z.string())
-    .nullish()
-    .describe("Important lessons or reflections."),
+    .describe("Day of month (1-31). Provide only when the month is known."),
   chapterId: z
     .string()
     .nullish()
@@ -67,6 +68,26 @@ const baseEntrySchema = {
     .describe("If you do not know the chapterId, provide the chapter title instead."),
 };
 
+const entryTypeSchema = z.enum(["milestone", "memory", "story"]);
+
+const createEntrySchema = z.object({
+  ...entryFieldsSchema,
+  entryType: entryTypeSchema.describe(
+    "Select the most appropriate entry category: milestone (major event), memory (snapshot), or story (long-form narrative).",
+  ),
+});
+
+const updateEntrySchema = z.object({
+  entryId: z
+    .string()
+    .min(1, "Specify the entry identifier from the context list.")
+    .describe("ID of the entry to update."),
+  ...entryFieldsSchema,
+  entryType: entryTypeSchema
+    .nullish()
+    .describe("Optionally change the entry type if the conversation reframed it."),
+});
+
 export function buildInterviewTools(
   context: InterviewToolContext,
 ): { tools: DynamicStructuredTool[]; tracker: ToolTracker } {
@@ -75,8 +96,8 @@ export function buildInterviewTools(
   const createEntryTool = new DynamicStructuredTool({
     name: "create_interview_entry",
     description:
-      "Use this tool to create a new chapter entry when the user has shared a well-defined memory with timeline, emotions, and takeaways.",
-    schema: z.object(baseEntrySchema),
+      "Use this tool to create a new chapter entry when the user has shared a well-defined story, memory or milestone.",
+    schema: createEntrySchema,
     func: async (input) => {
       const chapterId = resolveChapterId(
         context.chapters,
@@ -89,13 +110,15 @@ export function buildInterviewTools(
 
       const metadata: InterviewEntryMetadata = buildEntryMetadata(input);
 
+      const { entryDate, dateGranularity } = deriveEntryDateFields(input);
+
       const insertPayload = {
         chapter_id: chapterId,
-        entry_type: "story" as const,
+        entry_type: input.entryType as ChapterEntryType,
         title: input.title.trim(),
         summary: input.summary.trim(),
-        entry_date: normalizeDate(input.entryDate),
-        date_granularity: "day" as const,
+        entry_date: entryDate,
+        date_granularity: dateGranularity,
         status: "draft" as const,
         body: metadata as Json,
       };
@@ -134,13 +157,7 @@ export function buildInterviewTools(
     name: "update_interview_entry",
     description:
       "Use this tool to enrich an existing entry with new detail, timeline, emotional context, or to adjust its title/summary.",
-    schema: z.object({
-      entryId: z
-        .string()
-        .min(1, "Specify the entry identifier from the context list.")
-        .describe("ID of the entry to update."),
-      ...baseEntrySchema,
-    }),
+    schema: updateEntrySchema,
     func: async (input) => {
       const entryId = input.entryId.trim();
       const entry = await loadInterviewEntry(context, entryId);
@@ -157,13 +174,18 @@ export function buildInterviewTools(
         resolveChapterId(context.chapters, input.chapterId, input.chapterTitle) ??
         entry.chapter_id;
 
+      const { entryDate, dateGranularity } = deriveEntryDateFields(input, {
+        entry_date: entry.entry_date,
+        date_granularity: entry.date_granularity,
+      });
+
       const updatePayload = {
         chapter_id: chapterId,
         title: input.title ? input.title.trim() : entry.title,
         summary: input.summary ? input.summary.trim() : entry.summary,
-        entry_date: input.entryDate
-          ? normalizeDate(input.entryDate)
-          : entry.entry_date,
+        entry_date: entryDate,
+        date_granularity: dateGranularity,
+        entry_type: (input.entryType as ChapterEntryType | null) ?? entry.entry_type,
         body: metadata as Json,
       };
 
@@ -234,46 +256,69 @@ function buildEntryMetadata(input: Record<string, unknown>): InterviewEntryMetad
     metadata.detail = input.detail.trim();
   }
 
-  if (typeof input.timeline === "string" && input.timeline.trim()) {
-    metadata.timeline = input.timeline.trim();
-  }
-
-  if (typeof input.location === "string" && input.location.trim()) {
-    metadata.location = input.location.trim();
-  }
-
-  if (Array.isArray(input.participants) && input.participants.length) {
-    metadata.people = input.participants
-      .map((person) => (typeof person === "string" ? person.trim() : ""))
-      .filter(Boolean);
-  }
-
-  if (Array.isArray(input.emotions) && input.emotions.length) {
-    metadata.emotions = input.emotions
-      .map((emotion) => (typeof emotion === "string" ? emotion.trim() : ""))
-      .filter(Boolean);
-  }
-
-  if (Array.isArray(input.takeaways) && input.takeaways.length) {
-    metadata.takeaways = input.takeaways
-      .map((value) => (typeof value === "string" ? value.trim() : ""))
-      .filter(Boolean);
-  }
 
   return metadata;
 }
 
-function normalizeDate(raw?: string | null) {
-  if (!raw) {
-    return null;
+function deriveEntryDateFields(
+  input: {
+    entryYear?: number | null;
+    entryMonth?: number | null;
+    entryDay?: number | null;
+  },
+  fallback?: {
+    entry_date: string | null;
+    date_granularity: ChapterEntryDateGranularity;
+  },
+): { entryDate: string | null; dateGranularity: ChapterEntryDateGranularity } {
+  const provided =
+    input.entryYear !== undefined ||
+    input.entryMonth !== undefined ||
+    input.entryDay !== undefined;
+
+  if (!provided && fallback) {
+    return {
+      entryDate: fallback.entry_date,
+      dateGranularity: fallback.date_granularity,
+    };
   }
-  const trimmed = raw.trim();
-  if (!trimmed) {
-    return null;
+
+  const year =
+    typeof input.entryYear === "number" && Number.isFinite(input.entryYear)
+      ? Math.trunc(input.entryYear)
+      : null;
+  const month =
+    typeof input.entryMonth === "number" && Number.isFinite(input.entryMonth)
+      ? Math.trunc(input.entryMonth)
+      : null;
+  const day =
+    typeof input.entryDay === "number" && Number.isFinite(input.entryDay)
+      ? Math.trunc(input.entryDay)
+      : null;
+
+  if (!year) {
+    return { entryDate: null, dateGranularity: "day" };
   }
-  const parsed = Date.parse(trimmed);
-  if (Number.isNaN(parsed)) {
-    return trimmed;
+
+  if (!month) {
+    return {
+      entryDate: `${year}-01-01`,
+      dateGranularity: "year",
+    };
   }
-  return new Date(parsed).toISOString().slice(0, 10);
+
+  const monthString = `${month}`.padStart(2, "0");
+
+  if (!day) {
+    return {
+      entryDate: `${year}-${monthString}-01`,
+      dateGranularity: "month",
+    };
+  }
+
+  const dayString = `${day}`.padStart(2, "0");
+  return {
+    entryDate: `${year}-${monthString}-${dayString}`,
+    dateGranularity: "day",
+  };
 }

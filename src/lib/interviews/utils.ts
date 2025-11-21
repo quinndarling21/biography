@@ -5,6 +5,13 @@ const SHORT_DATE = new Intl.DateTimeFormat("en-US", {
   day: "numeric",
 });
 
+const ABSOLUTE_DATE = new Intl.DateTimeFormat("en-US", {
+  month: "long",
+  day: "numeric",
+  year: "numeric",
+  timeZone: "UTC",
+});
+
 export function formatInterviewTitle(
   interview: Pick<UserInterview, "created_at" | "name">,
   fallbackIndex?: number,
@@ -45,9 +52,5 @@ export function formatAbsoluteDate(value: string): string {
   if (Number.isNaN(date.getTime())) {
     return value;
   }
-  return date.toLocaleDateString("en-US", {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  });
+  return ABSOLUTE_DATE.format(date);
 }

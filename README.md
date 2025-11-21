@@ -21,7 +21,7 @@ npm install
 - **Tools**: Two LangChain structured tools encapsulate persistence:
   1. `create_interview_entry` drafts a new `chapter_entries` record and links it through `interview_entries` when the model sees a well-formed story.
   2. `update_interview_entry` amends an existing entry with richer summaries, emotions, or timelines as the participant shares more.
-  Both wrap Supabase queries, respect RLS, and capture metadata (location, people, emotions, takeaways) inside the entry’s JSON `body`.
+  Both wrap Supabase queries, respect RLS, and capture metadata inside the entry’s JSON `body`.
 - **Data dependencies**: For every chat turn we load (a) the last 24 interview messages, (b) any entries already tied to that interview, and (c) the user’s chapters (`src/lib/interviews/context.ts`). These feed into the system prompt so the agent can reference the correct chapters/entry IDs when invoking tools.
 - **API surface**:
   - `POST /api/interviewer/interviews` – creates a session row and seeds the first LLM prompt. Returns `{ interview, openingMessage }`.

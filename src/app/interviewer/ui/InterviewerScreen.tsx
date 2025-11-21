@@ -16,6 +16,7 @@ import {
   formatAbsoluteDate,
   formatInterviewTitle,
 } from "@/lib/interviews/utils";
+import { formatEntryDateLabel } from "@/lib/timeline/transformers";
 import { cn } from "@/lib/utils";
 import { BiographyDataService } from "@/lib/services/biography-data-service";
 import type { UserChapter } from "@/lib/services/biography-data-service";
@@ -506,7 +507,10 @@ export function InterviewerScreen({
                         </p>
                         {entry.entry_date ? (
                           <p className="text-xs text-[var(--color-text-muted)]">
-                            {formatAbsoluteDate(entry.entry_date)}
+                            {formatEntryDateLabel(
+                              entry.entry_date,
+                              entry.date_granularity,
+                            )}
                           </p>
                         ) : null}
                       </div>
