@@ -1,4 +1,5 @@
 "use client";
+import type { Route } from "next";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
@@ -104,11 +105,13 @@ function InterviewMode() {
             <BuilderActionCard
               key={option.id}
               action={option}
-              ctaLabel={isVoice ? "Coming soon" : "Begin"}
-              disabled={isVoice}
-              onAction={
-                isVoice ? undefined : () => router.push("/interviewer")
-              }
+              ctaLabel="Begin"
+              onAction={() => {
+                const destination = (isVoice
+                  ? "/interviewer/voice"
+                  : "/interviewer") as Route;
+                router.push(destination);
+              }}
             />
           );
         })}
@@ -172,6 +175,7 @@ type RecentConversation = {
   name: string;
   createdAt: string;
   updatedAt: string;
+  mode: "chat" | "voice";
 };
 
 function RecentConversations() {
@@ -223,6 +227,7 @@ function RecentConversations() {
             name: interview.name,
             createdAt: interview.created_at,
             updatedAt: latest?.ts ?? interview.closed_at ?? interview.created_at,
+            mode: interview.mode,
           } satisfies RecentConversation;
         }),
       );
@@ -257,14 +262,20 @@ function RecentConversations() {
         </div>
       ) : conversations.length === 0 ? (
         <p className="py-4 text-sm text-[var(--color-text-muted)]">
-          Start a chat-based interview to see it appear here.
+          Start a chat or voice interview to see it appear here.
         </p>
       ) : (
         <ul className="divide-y divide-[var(--color-border-subtle)]">
           {conversations.map((conversation) => (
             <li key={conversation.id} className="py-3">
+              {(() => {
+                const href = `${
+                  conversation.mode === "voice" ? "/interviewer/voice" : "/interviewer"
+                }?interview=${conversation.id}` as Route;
+
+                return (
               <Link
-                href={`/interviewer?interview=${conversation.id}`}
+                href={href}
                 className="flex items-center justify-between"
               >
                 <div>
@@ -272,6 +283,7 @@ function RecentConversations() {
                     {formatInterviewTitle({
                       created_at: conversation.createdAt,
                       name: conversation.name,
+                      mode: conversation.mode,
                     })}
                   </p>
                   <p className="text-xs text-[var(--color-text-muted)]">
@@ -279,9 +291,11 @@ function RecentConversations() {
                   </p>
                 </div>
                 <span className="rounded-full border border-[var(--color-border-subtle)] px-3 py-1 text-xs font-semibold text-[var(--color-text-secondary)]">
-                  Chat
+                  {conversation.mode === "voice" ? "Voice" : "Chat"}
                 </span>
               </Link>
+                );
+              })()}
             </li>
           ))}
         </ul>

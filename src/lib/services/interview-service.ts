@@ -11,16 +11,62 @@ type Tables = Database["public"]["Tables"];
 
 export type UserInterview = Tables["user_interviews"]["Row"];
 export type InterviewMessage = Tables["interview_messages"]["Row"];
+export type InterviewMode = Database["public"]["Enums"]["user_interview_mode"];
+export type InterviewMessageAuthor = Database["public"]["Enums"]["interview_message_author"];
 type InterviewEntryLink = Tables["interview_entries"]["Row"];
 type ChapterEntryRow = Tables["chapter_entries"]["Row"];
 export type InterviewDebugLog = Tables["interview_message_debug_logs"]["Row"];
+export type InterviewRealtimeEvent = Tables["interview_realtime_events"]["Row"];
+export type InterviewRealtimeEventOrigin =
+  Database["public"]["Enums"]["interview_realtime_event_origin"];
 export type InterviewMessageEntryAction = {
   action: "created" | "updated";
   entryId: string;
 };
+export type InterviewMessageRealtimeToolCall = {
+  name: string;
+  callId?: string | null;
+};
+export type InterviewMessageRealtimeMetadata = {
+  source?: InterviewMode;
+  itemId?: string | null;
+  responseId?: string | null;
+  order?: number;
+  stage?: "opening" | "follow_up" | "closing";
+  toolCalls?: InterviewMessageRealtimeToolCall[];
+};
 export type InterviewMessageMetadata = {
   entryActions?: InterviewMessageEntryAction[];
+  realtime?: InterviewMessageRealtimeMetadata;
+  conversation?: {
+    ended?: boolean;
+  };
   [key: string]: Json | undefined;
+};
+export type InterviewRealtimeEventInput = {
+  origin: InterviewRealtimeEventOrigin;
+  type: string;
+  summary?: string | null;
+  payload?: Json;
+  interviewMessageId?: string | null;
+};
+export type VoiceSessionTokenResult = {
+  clientSecret: string;
+  expiresAt: number | null;
+  model: string;
+  shouldStartOpeningTurn: boolean;
+  interview: UserInterview;
+};
+export type VoiceToolExecutionResult = {
+  output: Json;
+  createdEntryIds: string[];
+  updatedEntryIds: string[];
+  closedInterview: boolean;
+  interview: UserInterview | null;
+};
+export type PersistVoiceMessageResult = {
+  message: InterviewMessage;
+  interview: UserInterview | null;
 };
 
 export type InterviewEntryRecord = InterviewEntryLink & {
@@ -32,30 +78,41 @@ type SendMessageResult = {
   interviewerMessage: InterviewMessage;
   createdEntryIds: string[];
   updatedEntryIds: string[];
+  closedInterview: boolean;
+  interview: UserInterview | null;
 };
 
 type CreateInterviewResult = {
   interview: UserInterview;
-  openingMessage: InterviewMessage;
+  openingMessage: InterviewMessage | null;
 };
 
 export class InterviewService {
   constructor(private readonly client: SupabaseClient<Database>) {}
 
-  async listInterviews(userId: string): Promise<ServiceResult<UserInterview[]>> {
+  async listInterviews(
+    userId: string,
+    options: { mode?: InterviewMode } = {},
+  ): Promise<ServiceResult<UserInterview[]>> {
     return this.resolveList(
-      () =>
-        this.client
+      async () => {
+        let query = this.client
           .from("user_interviews")
           .select("*")
-          .eq("user_id", userId)
-          .order("created_at", { ascending: false }),
+          .eq("user_id", userId);
+
+        if (options.mode) {
+          query = query.eq("mode", options.mode);
+        }
+
+        return query.order("created_at", { ascending: false });
+      },
       `list interviews for ${userId}`,
     );
   }
 
   async getMessages(interviewId: string): Promise<ServiceResult<InterviewMessage[]>> {
-    return this.resolveList(
+    const result = await this.resolveList(
       () =>
         this.client
           .from("interview_messages")
@@ -64,6 +121,15 @@ export class InterviewService {
           .order("sequence", { ascending: true }),
       `load interview messages ${interviewId}`,
     );
+
+    if (result.error || !result.data) {
+      return result;
+    }
+
+    return {
+      data: sortInterviewMessages(result.data),
+      error: null,
+    };
   }
 
   async getEntries(interviewId: string): Promise<ServiceResult<InterviewEntryRecord[]>> {
@@ -89,10 +155,74 @@ export class InterviewService {
     );
   }
 
-  async createInterview(): Promise<ServiceResult<CreateInterviewResult>> {
+  async getRealtimeEvents(
+    interviewId: string,
+  ): Promise<ServiceResult<InterviewRealtimeEvent[]>> {
+    return this.resolveList(
+      () =>
+        this.client
+          .from("interview_realtime_events")
+          .select("*")
+          .eq("interview_id", interviewId)
+          .order("sequence", { ascending: true }),
+      `load realtime interview events ${interviewId}`,
+    );
+  }
+
+  async createInterview(
+    options: { mode?: InterviewMode } = {},
+  ): Promise<ServiceResult<CreateInterviewResult>> {
     return this.postJson<CreateInterviewResult>(
       "/api/interviewer/interviews",
       "create interview",
+      options.mode ? { mode: options.mode } : undefined,
+    );
+  }
+
+  async createVoiceSessionToken(payload: {
+    interviewId: string;
+  }): Promise<ServiceResult<VoiceSessionTokenResult>> {
+    return this.postJson<VoiceSessionTokenResult>(
+      "/api/interviewer/voice/token",
+      "create voice session token",
+      payload,
+    );
+  }
+
+  async executeVoiceTool(payload: {
+    interviewId: string;
+    toolName: string;
+    callId?: string | null;
+    args: Record<string, Json | undefined>;
+  }): Promise<ServiceResult<VoiceToolExecutionResult>> {
+    return this.postJson<VoiceToolExecutionResult>(
+      "/api/interviewer/voice/tool",
+      "execute voice interviewer tool",
+      payload,
+    );
+  }
+
+  async persistVoiceMessage(payload: {
+    interviewId: string;
+    author: InterviewMessageAuthor;
+    body: string;
+    metadata?: InterviewMessageMetadata | null;
+  }): Promise<ServiceResult<PersistVoiceMessageResult>> {
+    return this.postJson<PersistVoiceMessageResult>(
+      "/api/interviewer/voice/messages",
+      "persist voice interview message",
+      payload,
+    );
+  }
+
+  async logRealtimeEvents(payload: {
+    interviewId: string;
+    events: InterviewRealtimeEventInput[];
+  }): Promise<ServiceResult<{ count: number }>> {
+    return this.postJson<{ count: number }>(
+      "/api/interviewer/voice/events",
+      "log realtime interview events",
+      payload,
     );
   }
 
@@ -301,11 +431,37 @@ export function parseInterviewMessageMetadata(
   const entryActions = Array.isArray(normalized.entryActions)
     ? normalized.entryActions.filter(isInterviewMessageEntryAction)
     : undefined;
+  const realtime = isInterviewMessageRealtimeMetadata(normalized.realtime)
+    ? normalized.realtime
+    : undefined;
 
   return {
     ...normalized,
     ...(entryActions ? { entryActions } : {}),
+    ...(realtime ? { realtime } : {}),
   };
+}
+
+export function getInterviewMessageConversationOrder(
+  message: Pick<InterviewMessage, "metadata" | "sequence">,
+): number {
+  const order = parseInterviewMessageMetadata(message.metadata).realtime?.order;
+  return typeof order === "number" && Number.isFinite(order)
+    ? order
+    : message.sequence;
+}
+
+export function sortInterviewMessages<T extends Pick<InterviewMessage, "metadata" | "sequence">>(
+  messages: T[],
+): T[] {
+  return [...messages].sort((left, right) => {
+    const leftOrder = getInterviewMessageConversationOrder(left);
+    const rightOrder = getInterviewMessageConversationOrder(right);
+    if (leftOrder !== rightOrder) {
+      return leftOrder - rightOrder;
+    }
+    return left.sequence - right.sequence;
+  });
 }
 
 function isInterviewMessageEntryAction(
@@ -318,5 +474,47 @@ function isInterviewMessageEntryAction(
     "entryId" in value &&
     (value.action === "created" || value.action === "updated") &&
     typeof value.entryId === "string"
+  );
+}
+
+function isInterviewMessageRealtimeMetadata(
+  value: unknown,
+): value is InterviewMessageRealtimeMetadata {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+
+  const candidate = value as InterviewMessageRealtimeMetadata;
+  const validSource =
+    candidate.source === undefined ||
+    candidate.source === "chat" ||
+    candidate.source === "voice";
+  const validOrder =
+    candidate.order === undefined ||
+    (typeof candidate.order === "number" && Number.isFinite(candidate.order));
+  const validStage =
+    candidate.stage === undefined ||
+    candidate.stage === "opening" ||
+    candidate.stage === "follow_up" ||
+    candidate.stage === "closing";
+  const validToolCalls =
+    candidate.toolCalls === undefined ||
+    (Array.isArray(candidate.toolCalls) &&
+      candidate.toolCalls.every(isInterviewMessageRealtimeToolCall));
+
+  return validSource && validOrder && validStage && validToolCalls;
+}
+
+function isInterviewMessageRealtimeToolCall(
+  value: unknown,
+): value is InterviewMessageRealtimeToolCall {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "name" in value &&
+    typeof value.name === "string" &&
+    (!("callId" in value) ||
+      value.callId === null ||
+      typeof value.callId === "string")
   );
 }

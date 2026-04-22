@@ -7,6 +7,7 @@ import type {
 } from "@/lib/services/interview-service";
 import type { Database } from "@/lib/supabase/types";
 import { interviewerPromptConfig } from "@/config/prompts/interviewer-agent";
+import { sortInterviewMessages as sortMessages } from "@/lib/services/interview-service";
 
 export type InterviewChapterSummary = Pick<
   UserChapter,
@@ -42,7 +43,7 @@ export async function loadInterviewContext(
       .order("created_at", { ascending: true }),
   ]);
 
-  const messages = pruneHistory(messagesResult.data ?? []);
+  const messages = pruneHistory(sortMessages(messagesResult.data ?? []));
   const entries = (entriesResult.data ?? []) as InterviewEntryRecord[];
   const chapters = (chaptersResult.data ?? []) as InterviewChapterSummary[];
 

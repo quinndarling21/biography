@@ -351,7 +351,7 @@ export function InterviewerScreen({
     }
     setError(null);
     setCreating(true);
-    const result = await interviewService.createInterview();
+    const result = await interviewService.createInterview({ mode: "chat" });
     if (result.error) {
       setError(result.error.message);
       setCreating(false);
@@ -362,7 +362,7 @@ export function InterviewerScreen({
     setInterviews((prev) => [interview, ...prev]);
     setActiveInterviewId(interview.id);
     debugAutoLoadInterviewRef.current = null;
-    cacheConversation(interview.id, [openingMessage]);
+    cacheConversation(interview.id, openingMessage ? [openingMessage] : []);
     setCreating(false);
   }, [cacheConversation, creating, interviewService]);
 
@@ -442,6 +442,14 @@ export function InterviewerScreen({
       result.data.userMessage,
       result.data.interviewerMessage,
     ]);
+
+    if (result.data.interview) {
+      setInterviews((prev) =>
+        prev.map((interview) =>
+          interview.id === result.data.interview?.id ? result.data.interview : interview,
+        ),
+      );
+    }
 
     const needsEntryRefresh =
       result.data.createdEntryIds.length > 0 || result.data.updatedEntryIds.length > 0;

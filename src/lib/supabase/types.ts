@@ -185,6 +185,57 @@ export type Database = {
           },
         ]
       }
+      interview_realtime_events: {
+        Row: {
+          created_at: string
+          id: string
+          interview_id: string
+          interview_message_id: string | null
+          origin: Database["public"]["Enums"]["interview_realtime_event_origin"]
+          payload: Json | null
+          sequence: number
+          summary: string | null
+          type: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          interview_id: string
+          interview_message_id?: string | null
+          origin: Database["public"]["Enums"]["interview_realtime_event_origin"]
+          payload?: Json | null
+          sequence?: number
+          summary?: string | null
+          type: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          interview_id?: string
+          interview_message_id?: string | null
+          origin?: Database["public"]["Enums"]["interview_realtime_event_origin"]
+          payload?: Json | null
+          sequence?: number
+          summary?: string | null
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "interview_realtime_events_interview_id_fkey"
+            columns: ["interview_id"]
+            isOneToOne: false
+            referencedRelation: "user_interviews"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "interview_realtime_events_interview_message_id_fkey"
+            columns: ["interview_message_id"]
+            isOneToOne: false
+            referencedRelation: "interview_messages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_chapters: {
         Row: {
           created_at: string
@@ -228,6 +279,7 @@ export type Database = {
           closed_at: string | null
           created_at: string
           id: string
+          mode: Database["public"]["Enums"]["user_interview_mode"]
           name: string
           status: Database["public"]["Enums"]["user_interview_status"]
           user_id: string
@@ -236,6 +288,7 @@ export type Database = {
           closed_at?: string | null
           created_at?: string
           id?: string
+          mode?: Database["public"]["Enums"]["user_interview_mode"]
           name?: string
           status?: Database["public"]["Enums"]["user_interview_status"]
           user_id: string
@@ -244,6 +297,7 @@ export type Database = {
           closed_at?: string | null
           created_at?: string
           id?: string
+          mode?: Database["public"]["Enums"]["user_interview_mode"]
           name?: string
           status?: Database["public"]["Enums"]["user_interview_status"]
           user_id?: string
@@ -299,7 +353,9 @@ export type Database = {
       chapter_entry_date_granularity: "day" | "month" | "year"
       chapter_entry_status: "draft" | "published" | "archived"
       chapter_entry_type: "milestone" | "memory" | "story"
-      interview_message_author: "user" | "chat_interviewer"
+      interview_message_author: "user" | "interviewer"
+      interview_realtime_event_origin: "client" | "server" | "app"
+      user_interview_mode: "chat" | "voice"
       user_interview_status: "in_progress" | "closed"
     }
     CompositeTypes: {
@@ -431,7 +487,9 @@ export const Constants = {
       chapter_entry_date_granularity: ["day", "month", "year"],
       chapter_entry_status: ["draft", "published", "archived"],
       chapter_entry_type: ["milestone", "memory", "story"],
-      interview_message_author: ["user", "chat_interviewer"],
+      interview_message_author: ["user", "interviewer"],
+      interview_realtime_event_origin: ["client", "server", "app"],
+      user_interview_mode: ["chat", "voice"],
       user_interview_status: ["in_progress", "closed"],
     },
   },

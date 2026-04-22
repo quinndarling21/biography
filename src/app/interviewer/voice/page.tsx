@@ -1,17 +1,16 @@
 import { redirect } from "next/navigation";
 
-import { InterviewerScreen } from "@/app/interviewer/ui/InterviewerScreen";
 import { loadInterviewerPageData } from "@/app/interviewer/load-page-data";
+import { VoiceInterviewerScreen } from "@/app/interviewer/voice/ui/VoiceInterviewerScreen";
 
-
-export default async function InterviewerPage({
+export default async function VoiceInterviewerPage({
   searchParams,
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const resolvedSearchParams = await searchParams;
   const data = await loadInterviewerPageData({
-    mode: "chat",
+    mode: "voice",
     searchParams: resolvedSearchParams,
   });
 
@@ -20,14 +19,13 @@ export default async function InterviewerPage({
   }
 
   return (
-    <InterviewerScreen
+    <VoiceInterviewerScreen
       initialInterviews={data.interviews}
       initialMessages={data.initialMessages}
       initialEntries={data.initialEntries}
+      initialRealtimeEvents={data.initialRealtimeEvents}
       initialInterviewId={data.initialInterviewId}
       initialChapters={data.initialChapters}
-      isAdmin={data.isAdmin}
-      initialDebugLogs={data.initialDebugLogs}
     />
   );
 }

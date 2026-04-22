@@ -15,6 +15,7 @@ import type {
 type ToolTracker = {
   createdEntries: string[];
   updatedEntries: string[];
+  closedInterview: boolean;
 };
 
 type InterviewToolContext = {
@@ -79,9 +80,11 @@ const entryTypeSchema = z.enum(["milestone", "memory", "story"]);
 
 const createEntrySchema = z.object({
   ...entryFieldsSchema,
-  entryType: entryTypeSchema.describe(
-    "Select the most appropriate entry category: milestone (major event), memory (snapshot), or story (long-form narrative).",
-  ),
+  entryType: entryTypeSchema
+    .nullish()
+    .describe(
+      "Optional. Select the most appropriate entry category: milestone (major event), memory (snapshot), or story (long-form narrative). If omitted, the server will infer a reasonable default.",
+    ),
 });
 
 const updateEntrySchema = z.object({
@@ -95,12 +98,158 @@ const updateEntrySchema = z.object({
     .describe("Optionally change the entry type if the conversation reframed it."),
 });
 
+const completeInterviewSchema = z.object({
+  reason: z
+    .string()
+    .min(6, "Explain briefly why the interview is ready to close.")
+    .describe("Short reason for closing the interview."),
+  summary: z
+    .string()
+    .nullish()
+    .describe("Optional one-sentence recap of what was captured."),
+});
+
+export const interviewRealtimeToolDefinitions = [
+  {
+    type: "function" as const,
+    name: "create_interview_entry",
+    description:
+      "Create a draft entry immediately when the user introduces a distinct milestone, memory, or story, even if some timeline details are still missing.",
+    parameters: {
+      type: "object",
+      properties: {
+        title: {
+          type: "string",
+          description: "Title for the memory entry.",
+        },
+        summary: {
+          type: "string",
+          description: "Short summary for the entry.",
+        },
+        detail: {
+          type: "string",
+          description:
+            "Long-form detail, scene-setting notes, or a vivid excerpt captured from the conversation.",
+        },
+        entryYear: {
+          type: "integer",
+          description: "4 digit year like 1996 or 2010.",
+        },
+        entryMonth: {
+          type: "integer",
+          description: "Month number (1-12). Provide only when the year is known.",
+        },
+        entryDay: {
+          type: "integer",
+          description: "Day of month (1-31). Provide only when the month is known.",
+        },
+        chapterId: {
+          type: "string",
+          description: "UUID of the chapter to store the entry.",
+        },
+        chapterTitle: {
+          type: "string",
+          description: "If you do not know the chapterId, provide the chapter title instead.",
+        },
+        entryType: {
+          type: "string",
+          enum: ["milestone", "memory", "story"],
+          description:
+            "Optional. Select the most appropriate entry category: milestone (major event), memory (snapshot), or story (long-form narrative). If omitted, the server will infer a reasonable default.",
+        },
+      },
+      required: ["title", "summary"],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: "function" as const,
+    name: "update_interview_entry",
+    description:
+      "Enrich an existing interview entry when the user keeps elaborating on the same moment, adding timeline, people, feelings, or sharper language.",
+    parameters: {
+      type: "object",
+      properties: {
+        entryId: {
+          type: "string",
+          description: "ID of the entry to update.",
+        },
+        title: {
+          type: "string",
+          description: "Updated title for the entry.",
+        },
+        summary: {
+          type: "string",
+          description: "Updated summary for the entry.",
+        },
+        detail: {
+          type: "string",
+          description:
+            "Long-form detail, scene-setting notes, or a vivid excerpt captured from the conversation.",
+        },
+        entryYear: {
+          type: "integer",
+          description: "4 digit year like 1996 or 2010.",
+        },
+        entryMonth: {
+          type: "integer",
+          description: "Month number (1-12). Provide only when the year is known.",
+        },
+        entryDay: {
+          type: "integer",
+          description: "Day of month (1-31). Provide only when the month is known.",
+        },
+        chapterId: {
+          type: "string",
+          description: "UUID of the chapter to store the entry.",
+        },
+        chapterTitle: {
+          type: "string",
+          description: "If you do not know the chapterId, provide the chapter title instead.",
+        },
+        entryType: {
+          type: "string",
+          enum: ["milestone", "memory", "story"],
+          description: "Optionally change the entry type if the story was reframed.",
+        },
+      },
+      required: ["entryId"],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: "function" as const,
+    name: "complete_interview",
+    description:
+      "Mark the interview complete only when the user clearly indicates they are done or both sides have explicitly wrapped up.",
+    parameters: {
+      type: "object",
+      properties: {
+        reason: {
+          type: "string",
+          description: "Short reason for closing the interview.",
+        },
+        summary: {
+          type: "string",
+          description: "Optional one-sentence recap of what was captured.",
+        },
+      },
+      required: ["reason"],
+      additionalProperties: false,
+    },
+  },
+];
+
 export function buildInterviewTools(
   context: InterviewToolContext,
   options: BuildInterviewToolsOptions = {},
 ): { tools: DynamicStructuredTool[]; tracker: ToolTracker } {
   const mode = options.mode ?? "live";
-  const tracker: ToolTracker = { createdEntries: [], updatedEntries: [] };
+  const tracker: ToolTracker = {
+    createdEntries: [],
+    updatedEntries: [],
+    closedInterview: false,
+  };
   const draftEntries = buildDraftEntryCache(context.entries);
   let dryRunEntryCount = 0;
 
@@ -120,12 +269,13 @@ export function buildInterviewTools(
       }
 
       const metadata: InterviewEntryMetadata = buildEntryMetadata(input);
+      const entryType = inferEntryType(input);
 
       const { entryDate, dateGranularity } = deriveEntryDateFields(input);
 
       const insertPayload = {
         chapter_id: chapterId,
-        entry_type: input.entryType as ChapterEntryType,
+        entry_type: entryType,
         title: input.title.trim(),
         summary: input.summary.trim(),
         entry_date: entryDate,
@@ -250,7 +400,44 @@ export function buildInterviewTools(
     },
   });
 
-  return { tools: [createEntryTool, updateEntryTool], tracker };
+  const completeInterviewTool = new DynamicStructuredTool({
+    name: "complete_interview",
+    description:
+      "Mark the interview complete only when the user clearly indicates they are done or both sides have explicitly wrapped up.",
+    schema: completeInterviewSchema,
+    func: async (input) => {
+      if (mode === "dry-run") {
+        tracker.closedInterview = true;
+        return `Dry run: would close the interview. Reason: ${input.reason.trim()}`;
+      }
+
+      if (!context.supabase) {
+        return "Failed to close interview: Supabase client unavailable.";
+      }
+
+      const result = await context.supabase
+        .from("user_interviews")
+        .update({ status: "closed" })
+        .eq("id", context.interviewId)
+        .select("id")
+        .single();
+
+      if (result.error || !result.data) {
+        return `Failed to close interview: ${
+          result.error?.message ?? "unknown error"
+        }`;
+      }
+
+      tracker.closedInterview = true;
+      const summary =
+        typeof input.summary === "string" && input.summary.trim()
+          ? ` Summary: ${input.summary.trim()}`
+          : "";
+      return `Interview closed. Reason: ${input.reason.trim()}.${summary}`;
+    },
+  });
+
+  return { tools: [createEntryTool, updateEntryTool, completeInterviewTool], tracker };
 }
 
 function resolveChapterId(
@@ -285,8 +472,40 @@ function buildEntryMetadata(input: Record<string, unknown>): InterviewEntryMetad
     metadata.detail = input.detail.trim();
   }
 
-
   return metadata;
+}
+
+function inferEntryType(input: {
+  entryType?: string | null;
+  title: string;
+  summary: string;
+  detail?: string | null;
+}): ChapterEntryType {
+  if (input.entryType === "milestone" || input.entryType === "memory" || input.entryType === "story") {
+    return input.entryType;
+  }
+
+  const title = input.title.trim().toLowerCase();
+  const summary = input.summary.trim().toLowerCase();
+  const detail = typeof input.detail === "string" ? input.detail.trim().toLowerCase() : "";
+  const combined = `${title} ${summary} ${detail}`;
+
+  if (
+    /\b(born|birth|graduat|married|wedding|divorc|moved|move to|relocat|accepted|admitted|started|joined|launched|opened|promot|retir|won|award|passed away|died|death|first job|first child)\b/.test(
+      combined,
+    )
+  ) {
+    return "milestone";
+  }
+
+  const storyLength = detail.length + summary.length;
+  const sentenceCount = (detail.match(/[.!?]/g)?.length ?? 0) + (summary.match(/[.!?]/g)?.length ?? 0);
+
+  if (storyLength >= 260 || sentenceCount >= 4) {
+    return "story";
+  }
+
+  return "memory";
 }
 
 function buildDraftEntryCache(entries: InterviewEntryRecord[]): ChapterEntry[] {

@@ -19,6 +19,7 @@ import type {
   SerializedToolCall,
   ToolInvocationTrace,
 } from "@/lib/interviews/debug";
+import { resolveOpenAIKey } from "@/lib/openai/server";
 import { buildInterviewTools } from "@/lib/interviews/tools";
 import type {
   InterviewEntryRecord,
@@ -47,6 +48,7 @@ type RespondResult = {
   reply: string;
   createdEntryIds: string[];
   updatedEntryIds: string[];
+  closedInterview: boolean;
   debug: InterviewerAgentDebugTrace;
 };
 
@@ -173,6 +175,7 @@ export class InterviewerAgent {
       reply: coerceContentToString(toolLoopResult.message.content),
       createdEntryIds: tracker.createdEntries,
       updatedEntryIds: tracker.updatedEntries,
+      closedInterview: tracker.closedInterview,
       debug: {
         request: {
           model: input.request.model,
@@ -300,14 +303,6 @@ export class InterviewerAgent {
 
     throw new Error("Interviewer agent exceeded tool iteration limit.");
   }
-}
-
-function resolveOpenAIKey() {
-  const key = process.env.OPENAI_API_KEY ?? null;
-  if (!key) {
-    throw new Error("Set OPENAI_API_KEY to use the interviewer agent.");
-  }
-  return key;
 }
 
 function safeJsonParse(payload: string): Record<string, Json | undefined> {

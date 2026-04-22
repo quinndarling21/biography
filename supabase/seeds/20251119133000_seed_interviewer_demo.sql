@@ -89,7 +89,7 @@ insert into public.interview_messages (interview_id, author, ts, body)
 values
   (
     '35ce5b01-4545-456c-b3d7-26f5bf0c1e01',
-    'chat_interviewer',
+    'interviewer',
     '2025-05-15T14:00:00Z',
     'Welcome back! Ready to keep exploring your career pivots with Dad?'
   ),
@@ -101,7 +101,7 @@ values
   ),
   (
     '35ce5b01-4545-456c-b3d7-26f5bf0c1e01',
-    'chat_interviewer',
+    'interviewer',
     '2025-05-15T14:02:00Z',
     'What detail stands out most from that season?'
   ),
@@ -113,7 +113,7 @@ values
   ),
   (
     '35ce5b01-4545-456c-b3d7-26f5bf0c1e02',
-    'chat_interviewer',
+    'interviewer',
     '2025-05-10T18:00:00Z',
     'Let’s recap a favorite school day moment.'
   ),
@@ -125,7 +125,7 @@ values
   ),
   (
     '35ce5b01-4545-456c-b3d7-26f5bf0c1e02',
-    'chat_interviewer',
+    'interviewer',
     '2025-05-10T18:02:00Z',
     'Noted! I captured that win as an entry for you to revisit later.'
   )

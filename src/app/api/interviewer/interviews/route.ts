@@ -1,9 +1,16 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { InterviewerAgent } from "@/lib/interviews/agent";
 
-export async function POST() {
+const schema = z
+  .object({
+    mode: z.enum(["chat", "voice"]).optional(),
+  })
+  .optional();
+
+export async function POST(request: Request) {
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
@@ -13,11 +20,19 @@ export async function POST() {
     return NextResponse.json({ error: "Sign in to start a chat." }, { status: 401 });
   }
 
+  const payload = await safeParseRequest(request);
+  if (!payload.success) {
+    return NextResponse.json({ error: payload.error }, { status: payload.status });
+  }
+
+  const mode = payload.data.mode ?? "chat";
+
   const interviewResult = await supabase
     .from("user_interviews")
     .insert({
       user_id: user.id,
-      name: buildInterviewName(),
+      mode,
+      name: buildInterviewName(mode),
     })
     .select("*")
     .single();
@@ -32,6 +47,13 @@ export async function POST() {
 
   const interview = interviewResult.data;
 
+  if (mode === "voice") {
+    return NextResponse.json({
+      interview,
+      openingMessage: null,
+    });
+  }
+
   const agent = new InterviewerAgent();
   let openingMessage = "Welcome! Tell me a story from your life that you want to capture today.";
 
@@ -45,7 +67,7 @@ export async function POST() {
     .from("interview_messages")
     .insert({
       interview_id: interview.id,
-      author: "chat_interviewer",
+      author: "interviewer",
       body: openingMessage,
     })
     .select("*")
@@ -65,10 +87,31 @@ export async function POST() {
   });
 }
 
-function buildInterviewName(): string {
+async function safeParseRequest(request: Request) {
+  try {
+    const body = await request.json();
+    const result = schema.safeParse(body);
+    if (!result.success) {
+      return {
+        success: false as const,
+        status: 400,
+        error: result.error.issues[0]?.message ?? "Invalid request.",
+      };
+    }
+    return { success: true as const, data: result.data ?? {} };
+  } catch {
+    return {
+      success: true as const,
+      data: {},
+    };
+  }
+}
+
+function buildInterviewName(mode: "chat" | "voice"): string {
   const formatter = new Intl.DateTimeFormat("en-US", {
     month: "long",
     day: "numeric",
   });
-  return `Chat · ${formatter.format(new Date())}`;
+  const label = mode === "voice" ? "Voice" : "Chat";
+  return `${label} · ${formatter.format(new Date())}`;
 }

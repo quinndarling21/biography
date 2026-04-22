@@ -105,11 +105,12 @@ export async function POST(request: Request) {
       .from("interview_messages")
       .insert({
         interview_id: interviewId,
-        author: "chat_interviewer",
+        author: "interviewer",
         body: agentResult.reply,
         metadata: buildInterviewerMessageMetadata(
           agentResult.createdEntryIds,
           agentResult.updatedEntryIds,
+          agentResult.closedInterview,
         ),
       })
       .select("*")
@@ -142,11 +143,25 @@ export async function POST(request: Request) {
       }
     }
 
+    const updatedInterviewResult = agentResult.closedInterview
+      ? await supabase
+          .from("user_interviews")
+          .select("*")
+          .eq("id", interviewId)
+          .single()
+      : null;
+
+    if (updatedInterviewResult?.error) {
+      console.error("Failed to load closed interview after completion", updatedInterviewResult.error);
+    }
+
     return NextResponse.json({
       userMessage: userMessageResult.data,
       interviewerMessage: interviewerMessageResult.data,
       createdEntryIds: agentResult.createdEntryIds,
       updatedEntryIds: agentResult.updatedEntryIds,
+      closedInterview: agentResult.closedInterview,
+      interview: updatedInterviewResult?.data ?? null,
     });
   } catch (error) {
     console.error("Interviewer agent failed", error);
@@ -160,6 +175,7 @@ export async function POST(request: Request) {
 function buildInterviewerMessageMetadata(
   createdEntryIds: string[],
   updatedEntryIds: string[],
+  closedInterview: boolean,
 ) {
   const entryActions = [
     ...createdEntryIds.map((entryId) => ({
@@ -172,7 +188,14 @@ function buildInterviewerMessageMetadata(
     })),
   ];
 
-  return entryActions.length ? { entryActions } : null;
+  if (!entryActions.length && !closedInterview) {
+    return null;
+  }
+
+  return {
+    ...(entryActions.length ? { entryActions } : {}),
+    ...(closedInterview ? { conversation: { ended: true } } : {}),
+  };
 }
 
 async function safeParseRequest(request: Request) {

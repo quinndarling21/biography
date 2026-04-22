@@ -13,7 +13,7 @@ const ABSOLUTE_DATE = new Intl.DateTimeFormat("en-US", {
 });
 
 export function formatInterviewTitle(
-  interview: Pick<UserInterview, "created_at" | "name">,
+  interview: Pick<UserInterview, "created_at" | "name" | "mode">,
   fallbackIndex?: number,
 ): string {
   const trimmed = interview.name?.trim();
@@ -24,7 +24,8 @@ export function formatInterviewTitle(
   if (Number.isNaN(createdAt.getTime())) {
     return fallbackIndex ? `Conversation ${fallbackIndex}` : "Conversation";
   }
-  return `Chat · ${SHORT_DATE.format(createdAt)}`;
+  const label = interview.mode === "voice" ? "Voice" : "Chat";
+  return `${label} · ${SHORT_DATE.format(createdAt)}`;
 }
 
 export function formatUpdatedLabel(value: string): string {
