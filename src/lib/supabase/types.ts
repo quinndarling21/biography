@@ -153,6 +153,7 @@ export type Database = {
           body: string
           id: string
           interview_id: string
+          metadata: Json | null
           sequence: number
           ts: string
         }
@@ -161,6 +162,7 @@ export type Database = {
           body: string
           id?: string
           interview_id: string
+          metadata?: Json | null
           sequence?: number
           ts?: string
         }
@@ -169,6 +171,7 @@ export type Database = {
           body?: string
           id?: string
           interview_id?: string
+          metadata?: Json | null
           sequence?: number
           ts?: string
         }

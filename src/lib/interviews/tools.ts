@@ -7,6 +7,7 @@ import type { InterviewEntryRecord } from "@/lib/services/interview-service";
 import type { InterviewChapterSummary } from "@/lib/interviews/context";
 import type { InterviewEntryMetadata } from "@/config/prompts/interviewer-agent";
 import type {
+  ChapterEntry,
   ChapterEntryDateGranularity,
   ChapterEntryType,
 } from "@/lib/services/biography-data-service";
@@ -17,26 +18,32 @@ type ToolTracker = {
 };
 
 type InterviewToolContext = {
-  supabase: SupabaseClient<Database>;
+  supabase?: SupabaseClient<Database>;
   userId: string;
   interviewId: string;
   chapters: InterviewChapterSummary[];
   entries: InterviewEntryRecord[];
 };
 
+type InterviewToolMode = "live" | "dry-run";
+
+type BuildInterviewToolsOptions = {
+  mode?: InterviewToolMode;
+};
+
 const entryFieldsSchema = {
   title: z
     .string()
-    .min(6, "Use a descriptive title the user will recognize.")
+    .min(4, "Use a short title the user will recognize.")
     .describe("Title for the memory entry."),
   summary: z
     .string()
-    .min(12, "Summaries should include the key moments and feelings.")
+    .min(8, "Summaries should capture the key facts already shared.")
     .describe("Short summary for the entry."),
   detail: z
     .string()
     .nullish()
-    .describe("Long-form detail or excerpt captured from the conversation."),
+    .describe("Long-form detail, scene-setting notes, or a vivid excerpt captured from the conversation."),
   entryYear: z
     .coerce.number()
     .int()
@@ -90,13 +97,17 @@ const updateEntrySchema = z.object({
 
 export function buildInterviewTools(
   context: InterviewToolContext,
+  options: BuildInterviewToolsOptions = {},
 ): { tools: DynamicStructuredTool[]; tracker: ToolTracker } {
+  const mode = options.mode ?? "live";
   const tracker: ToolTracker = { createdEntries: [], updatedEntries: [] };
+  const draftEntries = buildDraftEntryCache(context.entries);
+  let dryRunEntryCount = 0;
 
   const createEntryTool = new DynamicStructuredTool({
     name: "create_interview_entry",
     description:
-      "Use this tool to create a new chapter entry when the user has shared a well-defined story, memory or milestone.",
+      "Create a draft entry immediately when the user introduces a distinct milestone, memory, or story, even if some timeline details are still missing.",
     schema: createEntrySchema,
     func: async (input) => {
       const chapterId = resolveChapterId(
@@ -122,6 +133,22 @@ export function buildInterviewTools(
         status: "draft" as const,
         body: metadata as Json,
       };
+
+      if (mode === "dry-run") {
+        const dryRunId = `dry-run-entry-${++dryRunEntryCount}`;
+        draftEntries.push({
+          id: dryRunId,
+          ...insertPayload,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        });
+        tracker.createdEntries.push(dryRunId);
+        return `Dry run: would create draft entry ${dryRunId} (${insertPayload.title}).`;
+      }
+
+      if (!context.supabase) {
+        return "Failed to create entry: Supabase client unavailable.";
+      }
 
       const entryResult = await context.supabase
         .from("chapter_entries")
@@ -149,6 +176,7 @@ export function buildInterviewTools(
       }
 
       tracker.createdEntries.push(entry.id);
+      draftEntries.push(entry);
       return `Draft entry ${entry.id} created (${entry.title}).`;
     },
   });
@@ -156,11 +184,11 @@ export function buildInterviewTools(
   const updateEntryTool = new DynamicStructuredTool({
     name: "update_interview_entry",
     description:
-      "Use this tool to enrich an existing entry with new detail, timeline, emotional context, or to adjust its title/summary.",
+      "Enrich an existing interview entry when the user keeps elaborating on the same moment, adding timeline, people, feelings, or sharper language.",
     schema: updateEntrySchema,
     func: async (input) => {
       const entryId = input.entryId.trim();
-      const entry = await loadInterviewEntry(context, entryId);
+      const entry = loadDraftEntry(draftEntries, entryId);
       if (!entry) {
         return `Entry ${entryId} not found for this interview.`;
       }
@@ -193,6 +221,16 @@ export function buildInterviewTools(
         body: metadata as Json,
       };
 
+      if (mode === "dry-run") {
+        applyDraftEntryUpdate(entry, updatePayload);
+        tracker.updatedEntries.push(entryId);
+        return `Dry run: would update entry ${entryId} with the latest story details.`;
+      }
+
+      if (!context.supabase) {
+        return `Failed to update entry ${entryId}: Supabase client unavailable.`;
+      }
+
       const result = await context.supabase
         .from("chapter_entries")
         .update(updatePayload)
@@ -206,26 +244,13 @@ export function buildInterviewTools(
         }`;
       }
 
+      applyDraftEntryUpdate(entry, updatePayload);
       tracker.updatedEntries.push(entryId);
       return `Entry ${entryId} updated with the latest story details.`;
     },
   });
 
   return { tools: [createEntryTool, updateEntryTool], tracker };
-}
-
-async function loadInterviewEntry(
-  context: InterviewToolContext,
-  entryId: string,
-) {
-  const result = await context.supabase
-    .from("interview_entries")
-    .select("*, chapter_entries(*)")
-    .eq("interview_id", context.interviewId)
-    .eq("entry_id", entryId)
-    .maybeSingle();
-
-  return (result.data as InterviewEntryRecord | null)?.chapter_entries ?? null;
 }
 
 function resolveChapterId(
@@ -262,6 +287,38 @@ function buildEntryMetadata(input: Record<string, unknown>): InterviewEntryMetad
 
 
   return metadata;
+}
+
+function buildDraftEntryCache(entries: InterviewEntryRecord[]): ChapterEntry[] {
+  return entries
+    .map((record) => record.chapter_entries)
+    .filter((entry): entry is ChapterEntry => Boolean(entry))
+    .map((entry) => ({ ...entry }));
+}
+
+function loadDraftEntry(entries: ChapterEntry[], entryId: string) {
+  return entries.find((entry) => entry.id === entryId) ?? null;
+}
+
+function applyDraftEntryUpdate(
+  entry: ChapterEntry,
+  update: {
+    chapter_id: string;
+    title: string;
+    summary: string | null;
+    entry_date: string | null;
+    date_granularity: ChapterEntryDateGranularity;
+    entry_type: ChapterEntryType;
+    body: Json;
+  },
+) {
+  entry.chapter_id = update.chapter_id;
+  entry.title = update.title;
+  entry.summary = update.summary;
+  entry.entry_date = update.entry_date;
+  entry.date_granularity = update.date_granularity;
+  entry.entry_type = update.entry_type;
+  entry.body = update.body;
 }
 
 function deriveEntryDateFields(

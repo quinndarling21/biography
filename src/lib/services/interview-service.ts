@@ -1,7 +1,11 @@
 import type { PostgrestError, SupabaseClient } from "@supabase/supabase-js";
 
+import type {
+  InterviewerAgentDebugTrace,
+  InterviewerAgentRequestPayload,
+} from "@/lib/interviews/debug";
 import type { ServiceError, ServiceResult } from "@/lib/services/biography-data-service";
-import type { Database } from "@/lib/supabase/types";
+import type { Database, Json } from "@/lib/supabase/types";
 
 type Tables = Database["public"]["Tables"];
 
@@ -10,6 +14,14 @@ export type InterviewMessage = Tables["interview_messages"]["Row"];
 type InterviewEntryLink = Tables["interview_entries"]["Row"];
 type ChapterEntryRow = Tables["chapter_entries"]["Row"];
 export type InterviewDebugLog = Tables["interview_message_debug_logs"]["Row"];
+export type InterviewMessageEntryAction = {
+  action: "created" | "updated";
+  entryId: string;
+};
+export type InterviewMessageMetadata = {
+  entryActions?: InterviewMessageEntryAction[];
+  [key: string]: Json | undefined;
+};
 
 export type InterviewEntryRecord = InterviewEntryLink & {
   chapter_entries: ChapterEntryRow | null;
@@ -134,6 +146,18 @@ export class InterviewService {
       },
     );
   }
+
+  async previewDebugRequest(payload: {
+    interviewId: string;
+    request: InterviewerAgentRequestPayload;
+  }): Promise<ServiceResult<InterviewerAgentDebugTrace>> {
+    return this.postJson<InterviewerAgentDebugTrace>(
+      "/api/interviewer/debug",
+      "preview interviewer request",
+      payload,
+    );
+  }
+
   private async postJson<T>(
     path: string,
     context: string,
@@ -264,4 +288,35 @@ function buildServiceError(
     "Supabase request failed";
 
   return { message, context };
+}
+
+export function parseInterviewMessageMetadata(
+  metadata: InterviewMessage["metadata"],
+): InterviewMessageMetadata {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+    return {};
+  }
+
+  const normalized = metadata as InterviewMessageMetadata;
+  const entryActions = Array.isArray(normalized.entryActions)
+    ? normalized.entryActions.filter(isInterviewMessageEntryAction)
+    : undefined;
+
+  return {
+    ...normalized,
+    ...(entryActions ? { entryActions } : {}),
+  };
+}
+
+function isInterviewMessageEntryAction(
+  value: unknown,
+): value is InterviewMessageEntryAction {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "action" in value &&
+    "entryId" in value &&
+    (value.action === "created" || value.action === "updated") &&
+    typeof value.entryId === "string"
+  );
 }

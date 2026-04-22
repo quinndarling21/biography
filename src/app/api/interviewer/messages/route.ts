@@ -107,6 +107,10 @@ export async function POST(request: Request) {
         interview_id: interviewId,
         author: "chat_interviewer",
         body: agentResult.reply,
+        metadata: buildInterviewerMessageMetadata(
+          agentResult.createdEntryIds,
+          agentResult.updatedEntryIds,
+        ),
       })
       .select("*")
       .single();
@@ -151,6 +155,24 @@ export async function POST(request: Request) {
       { status: 500 },
     );
   }
+}
+
+function buildInterviewerMessageMetadata(
+  createdEntryIds: string[],
+  updatedEntryIds: string[],
+) {
+  const entryActions = [
+    ...createdEntryIds.map((entryId) => ({
+      action: "created" as const,
+      entryId,
+    })),
+    ...updatedEntryIds.map((entryId) => ({
+      action: "updated" as const,
+      entryId,
+    })),
+  ];
+
+  return entryActions.length ? { entryActions } : null;
 }
 
 async function safeParseRequest(request: Request) {

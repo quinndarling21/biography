@@ -10,13 +10,21 @@ import type { DynamicStructuredTool } from "@langchain/core/tools";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { interviewerPromptConfig } from "@/config/prompts/interviewer-agent";
+import type { InterviewChapterSummary } from "@/lib/interviews/context";
+import type {
+  InterviewerAgentDebugTrace,
+  InterviewerAgentRequestPayload,
+  LlmDebugIteration,
+  SerializedLlmMessage,
+  SerializedToolCall,
+  ToolInvocationTrace,
+} from "@/lib/interviews/debug";
+import { buildInterviewTools } from "@/lib/interviews/tools";
 import type {
   InterviewEntryRecord,
   InterviewMessage,
 } from "@/lib/services/interview-service";
-import type { InterviewChapterSummary } from "@/lib/interviews/context";
 import type { Database, Json } from "@/lib/supabase/types";
-import { buildInterviewTools } from "@/lib/interviews/tools";
 
 type RespondInput = {
   supabase: SupabaseClient<Database>;
@@ -27,38 +35,19 @@ type RespondInput = {
   chapters: InterviewChapterSummary[];
 };
 
+type PreviewInput = {
+  userId: string;
+  interviewId: string;
+  entries: InterviewEntryRecord[];
+  chapters: InterviewChapterSummary[];
+  request: InterviewerAgentRequestPayload;
+};
+
 type RespondResult = {
   reply: string;
   createdEntryIds: string[];
   updatedEntryIds: string[];
   debug: InterviewerAgentDebugTrace;
-};
-
-type SerializedToolCall = {
-  id: string | null;
-  name: string;
-  args: Record<string, Json | undefined>;
-};
-
-type SerializedLlmMessage = {
-  role: "system" | "user" | "assistant" | "tool" | "unknown";
-  content: string;
-  toolCallId?: string | null;
-  toolCalls?: SerializedToolCall[];
-};
-
-type ToolInvocationTrace = {
-  step: number;
-  toolName: string;
-  toolCallId: string | null;
-  args: Record<string, Json | undefined>;
-  result: string;
-};
-
-type LlmDebugIteration = {
-  step: number;
-  request: SerializedLlmMessage[];
-  response: SerializedLlmMessage;
 };
 
 type ToolLoopDebugResult = {
@@ -72,19 +61,16 @@ type ToolInvokable = {
   invoke: (messages: BaseMessage[]) => Promise<AIMessage>;
 };
 
-export type InterviewerAgentDebugTrace = {
-  request: {
-    model: string;
-    temperature: number;
-    messages: SerializedLlmMessage[];
+type ToolExecutionInput = {
+  request: InterviewerAgentRequestPayload;
+  toolContext: {
+    supabase?: SupabaseClient<Database>;
+    userId: string;
+    interviewId: string;
+    entries: InterviewEntryRecord[];
+    chapters: InterviewChapterSummary[];
   };
-  response: {
-    message: SerializedLlmMessage;
-  };
-  metadata: {
-    iterations: LlmDebugIteration[];
-    toolRuns: ToolInvocationTrace[];
-  };
+  toolMode: "live" | "dry-run";
 };
 
 export class InterviewerAgent {
@@ -116,21 +102,55 @@ export class InterviewerAgent {
   }
 
   async respond(input: RespondInput): Promise<RespondResult> {
+    const request = {
+      model: this.config.model,
+      temperature: this.config.temperature,
+      messages: serializeMessages(this.buildPromptMessages(input)),
+    } satisfies InterviewerAgentRequestPayload;
+
+    return this.executeToolLoop({
+      request,
+      toolContext: {
+        supabase: input.supabase,
+        userId: input.userId,
+        interviewId: input.interviewId,
+        chapters: input.chapters,
+        entries: input.entries,
+      },
+      toolMode: "live",
+    });
+  }
+
+  async preview(input: PreviewInput): Promise<InterviewerAgentDebugTrace> {
+    const result = await this.executeToolLoop({
+      request: input.request,
+      toolContext: {
+        userId: input.userId,
+        interviewId: input.interviewId,
+        chapters: input.chapters,
+        entries: input.entries,
+      },
+      toolMode: "dry-run",
+    });
+
+    return result.debug;
+  }
+
+  private async executeToolLoop(
+    input: ToolExecutionInput,
+  ): Promise<RespondResult> {
     const apiKey = resolveOpenAIKey();
     const llm = new ChatOpenAI({
       apiKey,
-      model: this.config.model,
-      temperature: this.config.temperature,
+      model: input.request.model,
+      temperature: input.request.temperature,
       streaming: false,
     });
 
-    const { tools: toolset, tracker } = buildInterviewTools({
-      supabase: input.supabase,
-      userId: input.userId,
-      interviewId: input.interviewId,
-      chapters: input.chapters,
-      entries: input.entries,
-    });
+    const { tools: toolset, tracker } = buildInterviewTools(
+      input.toolContext,
+      { mode: input.toolMode },
+    );
 
     const toolMap = new Map<string, DynamicStructuredTool>(
       toolset.map((tool) => [tool.name, tool]),
@@ -139,7 +159,7 @@ export class InterviewerAgent {
       parallel_tool_calls: false,
     }) as ToolInvokable;
 
-    const promptMessages = this.buildPromptMessages(input);
+    const promptMessages = deserializeMessages(input.request.messages);
     const toolLoopResult = await this.runToolLoop(
       llmWithTools,
       toolMap,
@@ -155,8 +175,8 @@ export class InterviewerAgent {
       updatedEntryIds: tracker.updatedEntries,
       debug: {
         request: {
-          model: this.config.model,
-          temperature: this.config.temperature,
+          model: input.request.model,
+          temperature: input.request.temperature,
           messages: finalRequest,
         },
         response: {
@@ -252,6 +272,7 @@ export class InterviewerAgent {
         if (!tool) {
           continue;
         }
+
         const args =
           typeof toolCall.args === "string"
             ? safeJsonParse(toolCall.args)
@@ -282,12 +303,9 @@ export class InterviewerAgent {
 }
 
 function resolveOpenAIKey() {
-  const key =
-    process.env.OPENAI_API_KEY ?? null;
+  const key = process.env.OPENAI_API_KEY ?? null;
   if (!key) {
-    throw new Error(
-      "Set OPENAI_API_KEY to use the interviewer agent.",
-    );
+    throw new Error("Set OPENAI_API_KEY to use the interviewer agent.");
   }
   return key;
 }
@@ -391,5 +409,43 @@ function serializeToolCalls(
       typeof call.args === "string"
         ? safeJsonParse(call.args)
         : ((call.args ?? {}) as Record<string, Json | undefined>),
+  }));
+}
+
+function deserializeMessages(messages: SerializedLlmMessage[]): BaseMessage[] {
+  return messages.map((message) => {
+    switch (message.role) {
+      case "system":
+        return new SystemMessage(message.content);
+      case "user":
+        return new HumanMessage(message.content);
+      case "assistant":
+        return new AIMessage({
+          content: message.content,
+          tool_calls: deserializeToolCalls(message.toolCalls),
+        });
+      case "tool":
+        return new ToolMessage({
+          content: message.content,
+          tool_call_id: message.toolCallId ?? "tool",
+        });
+      default:
+        return new HumanMessage(message.content);
+    }
+  });
+}
+
+function deserializeToolCalls(
+  calls: SerializedToolCall[] | undefined,
+): AIMessage["tool_calls"] {
+  if (!calls?.length) {
+    return undefined;
+  }
+
+  return calls.map((call) => ({
+    id: call.id ?? undefined,
+    name: call.name,
+    args: call.args,
+    type: "tool_call",
   }));
 }
