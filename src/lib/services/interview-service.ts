@@ -9,6 +9,7 @@ export type UserInterview = Tables["user_interviews"]["Row"];
 export type InterviewMessage = Tables["interview_messages"]["Row"];
 type InterviewEntryLink = Tables["interview_entries"]["Row"];
 type ChapterEntryRow = Tables["chapter_entries"]["Row"];
+export type InterviewDebugLog = Tables["interview_message_debug_logs"]["Row"];
 
 export type InterviewEntryRecord = InterviewEntryLink & {
   chapter_entries: ChapterEntryRow | null;
@@ -61,6 +62,18 @@ export class InterviewService {
           .select("*, chapter_entries(*)")
           .eq("interview_id", interviewId),
       `load interview entries ${interviewId}`,
+    );
+  }
+
+  async getDebugLogs(interviewId: string): Promise<ServiceResult<InterviewDebugLog[]>> {
+    return this.resolveList(
+      () =>
+        this.client
+          .from("interview_message_debug_logs")
+          .select("*")
+          .eq("interview_id", interviewId)
+          .order("created_at", { ascending: true }),
+      `load interview debug logs ${interviewId}`,
     );
   }
 

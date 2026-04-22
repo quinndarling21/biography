@@ -37,6 +37,11 @@ export const interviewerPromptConfig: InterviewerPromptConfig = {
   opening: {
     guidance:
       "Welcome the participant and ask one probing, open-ended question to kick off the interview. Avoid mentioning tools.",
+    sampleOpeners: [
+      "What turning point still shapes the way you see your story today?",
+      "Can you walk me through a moment that still feels especially vivid?",
+      "Which memory from your early years would you love to capture before it fades?",
+    ],
   },
 };
 

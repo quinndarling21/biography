@@ -1,13 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, Plus, RotateCcw, Send, Lock } from "lucide-react";
+import { Bug, Loader2, Plus, RotateCcw, Send, Lock } from "lucide-react";
 
 import { Button } from "@/components/ui/Button";
 import { useSupabase } from "@/components/providers/SupabaseProvider";
 import { ManualEntryDialog } from "@/components/builder/dialogs/ManualEntryDialog";
 import {
   InterviewService,
+  type InterviewDebugLog,
   type InterviewEntryRecord,
   type InterviewMessage,
   type UserInterview,
@@ -24,9 +25,11 @@ import {
   chapterEntryToManualRecord,
   manualEntryDraftToUpdate,
 } from "@/data/manual-entries";
+import type { Json } from "@/lib/supabase/types";
 
 type ConversationMap = Record<string, InterviewMessage[]>;
 type EntryMap = Record<string, InterviewEntryRecord[]>;
+type DebugLogMap = Record<string, InterviewDebugLog[]>;
 type ChapterEntry = NonNullable<InterviewEntryRecord["chapter_entries"]>;
 
 type InterviewerScreenProps = {
@@ -35,6 +38,8 @@ type InterviewerScreenProps = {
   initialEntries: InterviewEntryRecord[];
   initialInterviewId: string | null;
   initialChapters: UserChapter[];
+  isAdmin: boolean;
+  initialDebugLogs?: InterviewDebugLog[];
 };
 
 export function InterviewerScreen({
@@ -43,6 +48,8 @@ export function InterviewerScreen({
   initialEntries,
   initialInterviewId,
   initialChapters,
+  isAdmin,
+  initialDebugLogs = [],
 }: InterviewerScreenProps) {
   const supabase = useSupabase();
   const interviewService = useMemo(
@@ -64,6 +71,12 @@ export function InterviewerScreen({
   const [entriesByInterview, setEntriesByInterview] = useState<EntryMap>(
     () => (initialInterviewId ? { [initialInterviewId]: initialEntries } : {}),
   );
+  const [debugLogsByInterview, setDebugLogsByInterview] = useState<DebugLogMap>(
+    () =>
+      initialInterviewId && isAdmin && initialDebugLogs.length
+        ? { [initialInterviewId]: initialDebugLogs }
+        : {},
+  );
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -77,6 +90,7 @@ export function InterviewerScreen({
     | null
   >(null);
   const [entryDialogSubmitting, setEntryDialogSubmitting] = useState(false);
+  const [showDebug, setShowDebug] = useState(false);
 
   const activeMessages = activeInterviewId
     ? messagesByInterview[activeInterviewId]
@@ -87,6 +101,17 @@ export function InterviewerScreen({
   const activeInterview = activeInterviewId
     ? interviews.find((interview) => interview.id === activeInterviewId) ?? null
     : null;
+  const activeDebugLogs =
+    isAdmin && activeInterviewId ? debugLogsByInterview[activeInterviewId] : undefined;
+  const activeDebugLogMap = useMemo(() => {
+    if (!activeDebugLogs || activeDebugLogs.length === 0) {
+      return {};
+    }
+    return activeDebugLogs.reduce<Record<string, InterviewDebugLog>>((acc, log) => {
+      acc[log.interview_message_id] = log;
+      return acc;
+    }, {});
+  }, [activeDebugLogs]);
 
   const canChat = Boolean(activeInterview && activeInterview.status === "in_progress");
 
@@ -120,13 +145,26 @@ export function InterviewerScreen({
     },
     [],
   );
+  const cacheDebugLogs = useCallback(
+    (interviewId: string, payload: DebugLogMap[string]) => {
+      setDebugLogsByInterview((prev) => ({
+        ...prev,
+        [interviewId]: payload,
+      }));
+    },
+    [],
+  );
 
   const loadConversation = useCallback(
     async (interviewId: string) => {
       setLoadingConversation(true);
-      const [messagesResult, entriesResult] = await Promise.all([
+      const debugPromise = isAdmin
+        ? interviewService.getDebugLogs(interviewId)
+        : Promise.resolve(null);
+      const [messagesResult, entriesResult, debugResult] = await Promise.all([
         interviewService.getMessages(interviewId),
         interviewService.getEntries(interviewId),
+        debugPromise,
       ]);
 
       if (messagesResult.error) {
@@ -141,9 +179,17 @@ export function InterviewerScreen({
         cacheEntries(interviewId, entriesResult.data);
       }
 
+      if (isAdmin && debugResult) {
+        if (debugResult.error) {
+          setError(debugResult.error.message);
+        } else {
+          cacheDebugLogs(interviewId, debugResult.data);
+        }
+      }
+
       setLoadingConversation(false);
     },
-    [cacheConversation, cacheEntries, interviewService],
+    [cacheConversation, cacheEntries, cacheDebugLogs, interviewService, isAdmin],
   );
 
   const refreshEntries = useCallback(
@@ -158,6 +204,23 @@ export function InterviewerScreen({
       cacheEntries(interviewId, data);
     },
     [cacheEntries, interviewService],
+  );
+
+  const refreshDebugLogs = useCallback(
+    async (interviewId: string) => {
+      if (!isAdmin) {
+        return;
+      }
+      const { data, error: debugError } = await interviewService.getDebugLogs(
+        interviewId,
+      );
+      if (debugError) {
+        setError(debugError.message);
+        return;
+      }
+      cacheDebugLogs(interviewId, data);
+    },
+    [cacheDebugLogs, interviewService, isAdmin],
   );
 
   const handleSelectInterview = useCallback(
@@ -222,8 +285,23 @@ export function InterviewerScreen({
       await refreshEntries(activeInterviewId);
     }
 
+    if (isAdmin) {
+      await refreshDebugLogs(activeInterviewId);
+    }
+
     setSending(false);
-  }, [activeInterviewId, cacheConversation, canChat, interviewService, messagesByInterview, refreshEntries, sending, message]);
+  }, [
+    activeInterviewId,
+    cacheConversation,
+    canChat,
+    interviewService,
+    isAdmin,
+    message,
+    messagesByInterview,
+    refreshDebugLogs,
+    refreshEntries,
+    sending,
+  ]);
 
   const handleSubmit = useCallback(
     async (event: React.FormEvent<HTMLFormElement>) => {
@@ -343,7 +421,7 @@ export function InterviewerScreen({
         )}
       </aside>
       <section className="flex min-h-[400px] flex-col rounded-3xl border border-[var(--color-border-subtle)] bg-white/95 p-6 shadow-sm">
-        <header className="flex items-center justify-between gap-4 pb-4">
+        <header className="flex flex-col gap-4 pb-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-lg font-semibold">
               {activeInterview ? formatInterviewTitle(activeInterview) : "Select a conversation"}
@@ -354,39 +432,56 @@ export function InterviewerScreen({
               </p>
             ) : null}
           </div>
-          {canChat ? (
-            <Button
-              type="button"
-              variant="secondary"
-              size="md"
-              disabled={closing}
-              onClick={async () => {
-                if (!activeInterviewId) return;
-                setError(null);
-                setClosing(true);
-                const result = await interviewService.closeInterview(activeInterviewId);
-                if (result.error) {
-                  setError(result.error.message);
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {isAdmin ? (
+              <button
+                type="button"
+                onClick={() => setShowDebug((prev) => !prev)}
+                className={cn(
+                  "inline-flex items-center rounded-full border px-4 py-2 text-xs font-semibold transition",
+                  showDebug
+                    ? "border-[var(--color-text-strong)] bg-[var(--color-text-strong)] text-on-strong"
+                    : "border-[var(--color-border-subtle)] bg-white text-[var(--color-text-secondary)] hover:border-[var(--color-text-strong)] hover:text-[var(--color-text-strong)]",
+                )}
+              >
+                <Bug className="h-4 w-4" aria-hidden />
+                <span className="ml-2">{showDebug ? "Hide debug" : "Debug mode"}</span>
+              </button>
+            ) : null}
+            {canChat ? (
+              <Button
+                type="button"
+                variant="secondary"
+                size="md"
+                disabled={closing}
+                onClick={async () => {
+                  if (!activeInterviewId) return;
+                  setError(null);
+                  setClosing(true);
+                  const result = await interviewService.closeInterview(activeInterviewId);
+                  if (result.error) {
+                    setError(result.error.message);
+                    setClosing(false);
+                    return;
+                  }
+                  setInterviews((prev) =>
+                    prev.map((interview) =>
+                      interview.id === result.data.id ? result.data : interview,
+                    ),
+                  );
                   setClosing(false);
-                  return;
-                }
-                setInterviews((prev) =>
-                  prev.map((interview) =>
-                    interview.id === result.data.id ? result.data : interview,
-                  ),
-                );
-                setClosing(false);
-              }}
-              className="text-xs"
-            >
-              {closing ? (
-                <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-              ) : (
-                <Lock className="h-4 w-4" aria-hidden />
-              )}
-              <span className="ml-2">Mark as closed</span>
-            </Button>
-          ) : null}
+                }}
+                className="text-xs"
+              >
+                {closing ? (
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                ) : (
+                  <Lock className="h-4 w-4" aria-hidden />
+                )}
+                <span className="ml-2">Mark as closed</span>
+              </Button>
+            ) : null}
+          </div>
         </header>
         {error ? (
           <div className="mb-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
@@ -412,7 +507,12 @@ export function InterviewerScreen({
               </p>
             ) : (
               activeMessages!.map((messageItem) => (
-                <MessageBubble key={`${messageItem.id}-${messageItem.sequence}`} message={messageItem} />
+                <MessageBubble
+                  key={`${messageItem.id}-${messageItem.sequence}`}
+                  message={messageItem}
+                  debugEnabled={isAdmin && showDebug}
+                  debugLog={activeDebugLogMap[messageItem.id]}
+                />
               ))
             )}
           </div>
@@ -571,10 +671,25 @@ export function InterviewerScreen({
   );
 }
 
-function MessageBubble({ message }: { message: InterviewMessage }) {
+function MessageBubble({
+  message,
+  debugEnabled = false,
+  debugLog,
+}: {
+  message: InterviewMessage;
+  debugEnabled?: boolean;
+  debugLog?: InterviewDebugLog;
+}) {
   const isUser = message.author === "user";
+  const showDebug = debugEnabled && !isUser;
+
   return (
-    <div className={cn("flex", isUser ? "justify-end" : "justify-start")}>
+    <div
+      className={cn(
+        "flex flex-col gap-2",
+        isUser ? "items-end text-on-strong" : "items-start text-[var(--color-text-strong)]",
+      )}
+    >
       <div
         className={cn(
           "max-w-[75%] rounded-2xl px-4 py-3 text-sm shadow-sm",
@@ -587,6 +702,71 @@ function MessageBubble({ message }: { message: InterviewMessage }) {
           {message.body}
         </p>
       </div>
+      {showDebug ? <DebugPanel log={debugLog ?? null} /> : null}
     </div>
   );
+}
+
+function DebugPanel({ log }: { log: InterviewDebugLog | null }) {
+  if (!log) {
+    return (
+      <div className="max-w-[85%] rounded-2xl border border-dashed border-[var(--color-border-subtle)] bg-white/80 px-4 py-3 text-xs text-[var(--color-text-secondary)] shadow-sm">
+        No debug payload recorded for this reply yet.
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-[85%] space-y-3 rounded-2xl border border-dashed border-[var(--color-border-subtle)] bg-[var(--color-surface-base)]/80 p-4 text-[var(--color-text-strong)] shadow-sm">
+      <DebugPayloadBlock label="LLM request" payload={log.request_payload} />
+      <DebugPayloadBlock label="LLM response" payload={log.response_payload} />
+      {log.metadata ? (
+        <DebugPayloadBlock label="Trace metadata" payload={log.metadata} collapsible />
+      ) : null}
+    </div>
+  );
+}
+
+function DebugPayloadBlock({
+  label,
+  payload,
+  collapsible = false,
+}: {
+  label: string;
+  payload: Json | null;
+  collapsible?: boolean;
+}) {
+  const content = (
+    <pre className="mt-1 max-h-60 overflow-auto rounded-2xl bg-white/90 p-3 font-mono text-[11px] leading-snug text-[var(--color-text-strong)]">
+      {formatJson(payload)}
+    </pre>
+  );
+
+  if (collapsible) {
+    return (
+      <details className="rounded-2xl border border-[var(--color-border-subtle)] bg-white/70 p-3 text-xs text-[var(--color-text-strong)]">
+        <summary className="cursor-pointer font-semibold text-[var(--color-text-secondary)]">
+          {label}
+        </summary>
+        {content}
+      </details>
+    );
+  }
+
+  return (
+    <div>
+      <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-secondary)]">
+        {label}
+      </p>
+      {content}
+    </div>
+  );
+}
+
+function formatJson(payload: Json | null | undefined) {
+  try {
+    return JSON.stringify(payload ?? null, null, 2);
+  } catch {
+    return "Unable to render payload.";
+  }
 }

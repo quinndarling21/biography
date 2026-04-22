@@ -166,7 +166,11 @@ export function buildInterviewTools(
       }
 
       const metadata: InterviewEntryMetadata = {
-        ...(entry.body && typeof entry.body === "object" ? entry.body : {}),
+        ...(entry.body &&
+        typeof entry.body === "object" &&
+        !Array.isArray(entry.body)
+          ? (entry.body as InterviewEntryMetadata)
+          : {}),
         ...buildEntryMetadata(input),
       };
 

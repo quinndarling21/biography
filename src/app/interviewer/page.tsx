@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 
 import { InterviewerScreen } from "@/app/interviewer/ui/InterviewerScreen";
 import type {
+  InterviewDebugLog,
   InterviewEntryRecord,
   InterviewMessage,
   UserInterview,
@@ -24,6 +25,18 @@ export default async function InterviewerPage({
   if (!user) {
     redirect("/login");
   }
+
+  const { data: profileData, error: profileError } = await supabase
+    .from("users")
+    .select("is_admin")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  if (profileError) {
+    console.error("Failed to fetch user profile for interviewer page", profileError);
+  }
+
+  const isAdmin = Boolean(profileData?.is_admin);
 
   const { data: interviews, error } = await supabase
     .from("user_interviews")
@@ -75,6 +88,21 @@ export default async function InterviewerPage({
     initialEntries = (entries ?? []) as InterviewEntryRecord[];
   }
 
+  let initialDebugLogs: InterviewDebugLog[] = [];
+  if (initialInterviewId && isAdmin) {
+    const { data: debugRows, error: debugError } = await supabase
+      .from("interview_message_debug_logs")
+      .select("*")
+      .eq("interview_id", initialInterviewId)
+      .order("created_at", { ascending: true });
+
+    if (debugError) {
+      console.error("Failed to load interview debug logs", debugError);
+    } else {
+      initialDebugLogs = (debugRows ?? []) as InterviewDebugLog[];
+    }
+  }
+
   return (
     <InterviewerScreen
       initialInterviews={normalized}
@@ -82,6 +110,8 @@ export default async function InterviewerPage({
       initialEntries={initialEntries}
       initialInterviewId={initialInterviewId}
       initialChapters={initialChapters}
+      isAdmin={isAdmin}
+      initialDebugLogs={initialDebugLogs}
     />
   );
 }

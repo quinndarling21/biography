@@ -20,6 +20,18 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Sign in to continue." }, { status: 401 });
   }
 
+  const adminResult = await supabase
+    .from("users")
+    .select("is_admin")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  if (adminResult.error) {
+    console.error("Failed to load user profile", adminResult.error);
+  }
+
+  const isAdmin = Boolean(adminResult.data?.is_admin);
+
   const payload = await safeParseRequest(request);
   if (!payload.success) {
     return NextResponse.json(
@@ -108,6 +120,22 @@ export async function POST(request: Request) {
         { error: "Could not record the interviewer reply." },
         { status: 500 },
       );
+    }
+
+    if (isAdmin) {
+      const debugInsert = await supabase
+        .from("interview_message_debug_logs")
+        .insert({
+          interview_id: interviewId,
+          interview_message_id: interviewerMessageResult.data.id,
+          request_payload: agentResult.debug.request,
+          response_payload: agentResult.debug.response,
+          metadata: agentResult.debug.metadata,
+        });
+
+      if (debugInsert.error) {
+        console.error("Failed to store interviewer debug log", debugInsert.error);
+      }
     }
 
     return NextResponse.json({

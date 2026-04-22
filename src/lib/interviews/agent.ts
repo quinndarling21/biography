@@ -15,7 +15,7 @@ import type {
   InterviewMessage,
 } from "@/lib/services/interview-service";
 import type { InterviewChapterSummary } from "@/lib/interviews/context";
-import type { Database } from "@/lib/supabase/types";
+import type { Database, Json } from "@/lib/supabase/types";
 import { buildInterviewTools } from "@/lib/interviews/tools";
 
 type RespondInput = {
@@ -31,6 +31,60 @@ type RespondResult = {
   reply: string;
   createdEntryIds: string[];
   updatedEntryIds: string[];
+  debug: InterviewerAgentDebugTrace;
+};
+
+type SerializedToolCall = {
+  id: string | null;
+  name: string;
+  args: Record<string, Json | undefined>;
+};
+
+type SerializedLlmMessage = {
+  role: "system" | "user" | "assistant" | "tool" | "unknown";
+  content: string;
+  toolCallId?: string | null;
+  toolCalls?: SerializedToolCall[];
+};
+
+type ToolInvocationTrace = {
+  step: number;
+  toolName: string;
+  toolCallId: string | null;
+  args: Record<string, Json | undefined>;
+  result: string;
+};
+
+type LlmDebugIteration = {
+  step: number;
+  request: SerializedLlmMessage[];
+  response: SerializedLlmMessage;
+};
+
+type ToolLoopDebugResult = {
+  finalRequest: SerializedLlmMessage[];
+  finalResponse: SerializedLlmMessage;
+  iterations: LlmDebugIteration[];
+  toolRuns: ToolInvocationTrace[];
+};
+
+type ToolInvokable = {
+  invoke: (messages: BaseMessage[]) => Promise<AIMessage>;
+};
+
+export type InterviewerAgentDebugTrace = {
+  request: {
+    model: string;
+    temperature: number;
+    messages: SerializedLlmMessage[];
+  };
+  response: {
+    message: SerializedLlmMessage;
+  };
+  metadata: {
+    iterations: LlmDebugIteration[];
+    toolRuns: ToolInvocationTrace[];
+  };
 };
 
 export class InterviewerAgent {
@@ -81,19 +135,38 @@ export class InterviewerAgent {
     const toolMap = new Map<string, DynamicStructuredTool>(
       toolset.map((tool) => [tool.name, tool]),
     );
-    const llmWithTools = llm.bindTools(toolset, { parallelToolCalls: false });
+    const llmWithTools = llm.bindTools(toolset, {
+      parallel_tool_calls: false,
+    }) as ToolInvokable;
 
     const promptMessages = this.buildPromptMessages(input);
-    const finalMessage = await this.runToolLoop(
+    const toolLoopResult = await this.runToolLoop(
       llmWithTools,
       toolMap,
       promptMessages,
     );
 
+    const { finalRequest, finalResponse, iterations, toolRuns } =
+      toolLoopResult.debug;
+
     return {
-      reply: coerceContentToString(finalMessage.content),
+      reply: coerceContentToString(toolLoopResult.message.content),
       createdEntryIds: tracker.createdEntries,
       updatedEntryIds: tracker.updatedEntries,
+      debug: {
+        request: {
+          model: this.config.model,
+          temperature: this.config.temperature,
+          messages: finalRequest,
+        },
+        response: {
+          message: finalResponse,
+        },
+        metadata: {
+          iterations,
+          toolRuns,
+        },
+      },
     };
   }
 
@@ -142,16 +215,36 @@ export class InterviewerAgent {
   }
 
   private async runToolLoop(
-    llm: ChatOpenAI,
+    llm: ToolInvokable,
     tools: Map<string, DynamicStructuredTool>,
     messages: BaseMessage[],
-  ) {
+  ): Promise<{ message: BaseMessage; debug: ToolLoopDebugResult }> {
+    const iterations: LlmDebugIteration[] = [];
+    const toolRuns: ToolInvocationTrace[] = [];
+
     for (let step = 0; step < this.config.maxToolIterations; step += 1) {
+      const requestSnapshot = serializeMessages(messages);
       const response = await llm.invoke(messages);
+      const responseSnapshot = serializeMessage(response);
+
+      iterations.push({
+        step: step + 1,
+        request: requestSnapshot,
+        response: responseSnapshot,
+      });
+
       messages.push(response);
 
       if (!response.tool_calls?.length) {
-        return response;
+        return {
+          message: response,
+          debug: {
+            finalRequest: requestSnapshot,
+            finalResponse: responseSnapshot,
+            iterations,
+            toolRuns,
+          },
+        };
       }
 
       for (const toolCall of response.tool_calls) {
@@ -162,12 +255,22 @@ export class InterviewerAgent {
         const args =
           typeof toolCall.args === "string"
             ? safeJsonParse(toolCall.args)
-            : toolCall.args ?? {};
+            : ((toolCall.args ?? {}) as Record<string, Json | undefined>);
         const result = await tool.invoke(args);
+        const serializedResult =
+          typeof result === "string" ? result : JSON.stringify(result);
+
+        toolRuns.push({
+          step: step + 1,
+          toolName: toolCall.name,
+          toolCallId: toolCall.id ?? null,
+          args,
+          result: serializedResult,
+        });
 
         messages.push(
           new ToolMessage({
-            content: typeof result === "string" ? result : JSON.stringify(result),
+            content: serializedResult,
             tool_call_id: toolCall.id ?? toolCall.name,
           }),
         );
@@ -189,10 +292,14 @@ function resolveOpenAIKey() {
   return key;
 }
 
-function safeJsonParse(payload: string): Record<string, unknown> {
+function safeJsonParse(payload: string): Record<string, Json | undefined> {
   try {
     const parsed = JSON.parse(payload);
-    return typeof parsed === "object" && parsed !== null ? parsed : {};
+    return typeof parsed === "object" &&
+      parsed !== null &&
+      !Array.isArray(parsed)
+      ? (parsed as Record<string, Json | undefined>)
+      : {};
   } catch {
     return {};
   }
@@ -227,4 +334,62 @@ function coerceContentToString(
   }
 
   return "";
+}
+
+function serializeMessages(messages: BaseMessage[]): SerializedLlmMessage[] {
+  return messages.map((message) => serializeMessage(message));
+}
+
+function serializeMessage(message: BaseMessage): SerializedLlmMessage {
+  if (message instanceof SystemMessage) {
+    return {
+      role: "system",
+      content: coerceContentToString(message.content),
+    };
+  }
+
+  if (message instanceof HumanMessage) {
+    return {
+      role: "user",
+      content: coerceContentToString(message.content),
+    };
+  }
+
+  if (message instanceof AIMessage) {
+    return {
+      role: "assistant",
+      content: coerceContentToString(message.content),
+      toolCalls: serializeToolCalls(message.tool_calls),
+    };
+  }
+
+  if (message instanceof ToolMessage) {
+    return {
+      role: "tool",
+      content: coerceContentToString(message.content),
+      toolCallId: message.tool_call_id ?? null,
+    };
+  }
+
+  return {
+    role: "unknown",
+    content: coerceContentToString(message.content),
+  };
+}
+
+function serializeToolCalls(
+  calls: AIMessage["tool_calls"],
+): SerializedToolCall[] | undefined {
+  if (!calls?.length) {
+    return undefined;
+  }
+
+  return calls.map((call) => ({
+    id: call.id ?? null,
+    name: call.name ?? "unknown",
+    args:
+      typeof call.args === "string"
+        ? safeJsonParse(call.args)
+        : ((call.args ?? {}) as Record<string, Json | undefined>),
+  }));
 }

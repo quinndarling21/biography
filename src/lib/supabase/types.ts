@@ -137,6 +137,51 @@ export type Database = {
           },
         ]
       }
+      interview_message_debug_logs: {
+        Row: {
+          created_at: string
+          id: string
+          interview_id: string
+          interview_message_id: string
+          metadata: Json | null
+          request_payload: Json
+          response_payload: Json
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          interview_id: string
+          interview_message_id: string
+          metadata?: Json | null
+          request_payload: Json
+          response_payload: Json
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          interview_id?: string
+          interview_message_id?: string
+          metadata?: Json | null
+          request_payload?: Json
+          response_payload?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "interview_message_debug_logs_interview_id_fkey"
+            columns: ["interview_id"]
+            isOneToOne: false
+            referencedRelation: "user_interviews"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "interview_message_debug_logs_interview_message_id_fkey"
+            columns: ["interview_message_id"]
+            isOneToOne: true
+            referencedRelation: "interview_messages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_chapters: {
         Row: {
           created_at: string
@@ -215,6 +260,7 @@ export type Database = {
           created_at: string
           first_name: string | null
           id: string
+          is_admin: boolean
           last_name: string | null
           onboarding_complete: boolean
           updated_at: string
@@ -223,6 +269,7 @@ export type Database = {
           created_at?: string
           first_name?: string | null
           id: string
+          is_admin?: boolean
           last_name?: string | null
           onboarding_complete?: boolean
           updated_at?: string
@@ -231,6 +278,7 @@ export type Database = {
           created_at?: string
           first_name?: string | null
           id?: string
+          is_admin?: boolean
           last_name?: string | null
           onboarding_complete?: boolean
           updated_at?: string
