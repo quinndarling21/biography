@@ -1,5 +1,5 @@
 -- Seed demo timeline data for user d59b3467-0345-4459-99c7-6ae6d2871f41.
--- This migration only inserts chapter/entry rows; assumes the user already exists.
+-- Optional demo data only. This assumes the auth user and matching public.users row already exist.
 
 begin;
 

@@ -15,7 +15,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "13.0.5"
+    PostgrestVersion: "14.5"
   }
   public: {
     Tables: {
@@ -102,41 +102,6 @@ export type Database = {
           },
         ]
       }
-      interview_messages: {
-        Row: {
-          author: Database["public"]["Enums"]["interview_message_author"]
-          body: string
-          id: string
-          interview_id: string
-          sequence: number
-          ts: string
-        }
-        Insert: {
-          author: Database["public"]["Enums"]["interview_message_author"]
-          body: string
-          id?: string
-          interview_id: string
-          sequence?: number
-          ts?: string
-        }
-        Update: {
-          author?: Database["public"]["Enums"]["interview_message_author"]
-          body?: string
-          id?: string
-          interview_id?: string
-          sequence?: number
-          ts?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "interview_messages_interview_id_fkey"
-            columns: ["interview_id"]
-            isOneToOne: false
-            referencedRelation: "user_interviews"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       interview_message_debug_logs: {
         Row: {
           created_at: string
@@ -178,6 +143,41 @@ export type Database = {
             columns: ["interview_message_id"]
             isOneToOne: true
             referencedRelation: "interview_messages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      interview_messages: {
+        Row: {
+          author: Database["public"]["Enums"]["interview_message_author"]
+          body: string
+          id: string
+          interview_id: string
+          sequence: number
+          ts: string
+        }
+        Insert: {
+          author: Database["public"]["Enums"]["interview_message_author"]
+          body: string
+          id?: string
+          interview_id: string
+          sequence?: number
+          ts?: string
+        }
+        Update: {
+          author?: Database["public"]["Enums"]["interview_message_author"]
+          body?: string
+          id?: string
+          interview_id?: string
+          sequence?: number
+          ts?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "interview_messages_interview_id_fkey"
+            columns: ["interview_id"]
+            isOneToOne: false
+            referencedRelation: "user_interviews"
             referencedColumns: ["id"]
           },
         ]

@@ -45,6 +45,43 @@ begin
 end;
 $$;
 
+create or replace function public.validate_interview_entry_ownership()
+returns trigger
+language plpgsql
+as $$
+declare
+  interview_user_id uuid;
+  entry_user_id uuid;
+begin
+  select ui.user_id
+  into interview_user_id
+  from public.user_interviews ui
+  where ui.id = new.interview_id;
+
+  select uc.user_id
+  into entry_user_id
+  from public.chapter_entries ce
+  join public.user_chapters uc on uc.id = ce.chapter_id
+  where ce.id = new.entry_id;
+
+  if interview_user_id is null then
+    raise exception 'Interview % does not exist.', new.interview_id;
+  end if;
+
+  if entry_user_id is null then
+    raise exception 'Chapter entry % does not exist.', new.entry_id;
+  end if;
+
+  if interview_user_id <> entry_user_id then
+    raise exception 'Interview % and chapter entry % must belong to the same user.',
+      new.interview_id,
+      new.entry_id;
+  end if;
+
+  return new;
+end;
+$$;
+
 -------------------------------------------------------------------------------
 -- Interviews
 
@@ -146,6 +183,11 @@ create index if not exists interview_entries_interview_idx
 
 alter table public.interview_entries enable row level security;
 
+create trigger validate_interview_entry_ownership
+before insert or update on public.interview_entries
+for each row
+execute procedure public.validate_interview_entry_ownership();
+
 create policy "Users can read their interview entries"
   on public.interview_entries
   for select
@@ -174,6 +216,15 @@ create policy "Users can manage their interview entries"
       select 1
       from public.user_interviews ui
       where ui.id = interview_entries.interview_id
+        and ui.user_id = auth.uid()
+    )
+    and exists (
+      select 1
+      from public.chapter_entries ce
+      join public.user_chapters uc on uc.id = ce.chapter_id
+      join public.user_interviews ui on ui.id = interview_entries.interview_id
+      where ce.id = interview_entries.entry_id
+        and uc.user_id = ui.user_id
         and ui.user_id = auth.uid()
     )
   );

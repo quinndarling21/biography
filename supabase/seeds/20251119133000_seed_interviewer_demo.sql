@@ -1,4 +1,5 @@
 -- Seed example interviews, messages, and linked entries for the demo user.
+-- Optional demo data only. This assumes the auth user and matching chapter data already exist.
 
 begin;
 

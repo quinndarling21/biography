@@ -66,6 +66,7 @@ create table if not exists public.users (
   id uuid primary key references auth.users (id) on delete cascade,
   first_name text,
   last_name text,
+  is_admin boolean not null default false,
   onboarding_complete boolean not null default false,
   created_at timestamptz not null default timezone('utc', now()),
   updated_at timestamptz not null default timezone('utc', now())
